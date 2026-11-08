@@ -396,7 +396,9 @@ CARD_SUFFIX = (
     "Return ONLY the card fields of the schema, in Russian, consistent with it. "
     "If the verdict carries web_check (sold prices found online) or sales (our "
     "own record of how this reference ended at auction), base value_low/high "
-    "and rarity_note on that evidence rather than memory, and mention it."
+    "and rarity_note on that evidence rather than memory, and mention it. "
+    "Never attach a famous nickname or film/celebrity link (James Bond, Arnie, "
+    "Steve Jobs, ...) unless it belongs to THIS exact reference."
 )
 
 

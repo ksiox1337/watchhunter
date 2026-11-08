@@ -11,6 +11,7 @@ mark the evaluation as notified.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal
 
@@ -23,7 +24,7 @@ from watchhunter.application.ports.repository import ListingRepository
 from watchhunter.config.logging import get_logger
 from watchhunter.domain.evaluation import WatchEvaluation
 from watchhunter.domain.exceptions import NotifierError
-from watchhunter.domain.models import Listing
+from watchhunter.domain.models import BuyingOption, Listing
 
 log = get_logger(__name__)
 
@@ -52,6 +53,13 @@ class PromisingNotifier:
         evaluation: WatchEvaluation,
         evaluation_id: int,
     ) -> NotifyOutcome:
+        # An auction that has already ended is never worth a message.
+        if (
+            listing.buying_option == BuyingOption.AUCTION
+            and listing.end_time <= datetime.now(timezone.utc)
+        ):
+            log.info("notify.listing_ended", external_id=listing.external_id)
+            return "gone"
         needs_refresh = (
             self._max_price_eur is not None or self._max_shipping_eur is not None
         )

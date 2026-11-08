@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from watchhunter.application.ports.marketplace import (
@@ -87,6 +88,16 @@ class EbayApiMarketplaceAdapter(MarketplacePort):
                 price_eur=listing.current_price_eur,
                 shipping_eur=listing.shipping_cost_eur,
             )
+
+        # Ended or sold out: the API still returns the item (with its final
+        # price), so treat it as gone for notifications.
+        avail = (data.get("estimatedAvailabilities") or [{}])[0]
+        end = data.get("itemEndDate")
+        ended = avail.get("estimatedAvailabilityStatus") == "OUT_OF_STOCK" or (
+            end and datetime.fromisoformat(end.replace("Z", "+00:00")) <= datetime.now(timezone.utc)
+        )
+        if ended and listing.buying_option != BuyingOption.AUCTION:
+            return ListingState(price_eur=None, shipping_eur=None)
 
         # Price
         bid = data.get("currentBidPrice") or data.get("price") or {}

@@ -122,7 +122,8 @@ def format_card(
         )
     if ev.sales_sold:
         lines.append(
-            f"📊 Наши данные: {ev.sales_sold} продаж за 90 дн., медиана {money(ev.sales_median_eur)}"
+            f"📊 Наши данные: {_plural(ev.sales_sold, 'продажа', 'продажи', 'продаж')} за 90 дн., "
+            f"медиана {money(ev.sales_median_eur)}"
         )
     if ev.photo_seen_url:
         lines.append(
@@ -179,6 +180,14 @@ def button_label(payload: NotificationPayload) -> str:
     source = _SOURCE.get(payload.listing.marketplace, "eBay")
     is_bin = payload.listing.buying_option == BuyingOption.FIXED_PRICE
     return f"{'Купить' if is_bin else 'Открыть'} на {source} →"
+
+
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return f"{n} {one}"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return f"{n} {few}"
+    return f"{n} {many}"
 
 
 def _bids(n: int) -> str:
