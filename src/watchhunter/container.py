@@ -94,7 +94,9 @@ async def build_container(settings: Settings) -> Container:
         max_price_eur=settings.max_price_eur,
         max_shipping_eur=settings.max_shipping_eur,
     )
-    deal_evaluator = DealEvaluator(min_score=settings.min_score)
+    deal_evaluator = DealEvaluator(
+        min_score=settings.min_score, min_rarity=settings.min_rarity
+    )
     promising_notifier = PromisingNotifier(
         notifier=notifier,
         marketplace=marketplace,
@@ -125,6 +127,7 @@ async def build_container(settings: Settings) -> Container:
         repository=repository,
         promising_notifier=promising_notifier,
         min_score=settings.min_score,
+        deal_evaluator=deal_evaluator,
     )
     kleinanzeigen_uc: ScanWatchesUseCase | None = None
     if settings.kleinanzeigen_enabled and settings.kleinanzeigen_keywords:

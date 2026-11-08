@@ -160,6 +160,8 @@ class Settings(BaseSettings):
     scan_interval_minutes: int = 15
     notify_interval_minutes: int = 60
     min_score: int = 60
+    # Only notify references at least this rare: "", low, medium, high, very_high.
+    min_rarity: str = ""
     auction_ends_within_hours: int = 24
     max_price_eur: Decimal | None = None
     max_shipping_eur: Decimal | None = None

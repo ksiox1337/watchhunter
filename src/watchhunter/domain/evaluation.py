@@ -19,6 +19,11 @@ class RarityLevel(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+    VERY_HIGH = "very_high"
+
+    @property
+    def rank(self) -> int:
+        return list(RarityLevel).index(self)
 
 
 class FakeRisk(StrEnum):
@@ -48,6 +53,7 @@ class WatchEvaluation(BaseModel):
     # Presentation fields (Russian). Optional so older stored evaluations load.
     display_name: str = ""
     era: str = ""
+    rarity_note: str = ""
     value_low_eur: Decimal | None = None
     value_high_eur: Decimal | None = None
     story: str = ""
@@ -78,6 +84,7 @@ def presentation_fields(raw: dict[str, Any]) -> dict[str, Any]:
     return {
         "display_name": str(raw.get("display_name_ru") or ""),
         "era": str(raw.get("era_ru") or ""),
+        "rarity_note": str(raw.get("rarity_note_ru") or ""),
         "value_low_eur": dec(raw.get("value_low_eur")),
         "value_high_eur": dec(raw.get("value_high_eur")),
         "story": str(raw.get("story_ru") or ""),

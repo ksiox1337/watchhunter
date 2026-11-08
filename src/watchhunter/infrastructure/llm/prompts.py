@@ -91,9 +91,20 @@ EVALUATION RULES
     value, completeness, condition, rarity), no generic filler.
 11. checks_ru — 1-2 concrete things (each under 80 characters) to verify before bidding (caseback number,
     module, functions, plating, seller photos missing).
-12. value_low_eur / value_high_eur — realistic resale range; the
+12. rarity — how hard THIS reference is to find, not how nice the listing is:
+      "low"       still in production or made in huge numbers, always on eBay
+      "medium"    discontinued, turns up every few weeks
+      "high"      short production run or regional (JDM) model, turns up a few
+                  times a year
+      "very_high" grail: prototypes, limited editions, NOS-in-box of a rare
+                  reference, turns up once a year or less
+    rarity_note_ru — max 70 chars, the concrete reason (years made, edition
+    size, JDM only, few survive working), e.g. "выпускались 1977–79, мало
+    рабочих экземпляров". Only facts you are sure of; else "оценка по эпохе".
+    Rarity raises the score only when the price doesn't already reflect it.
+13. value_low_eur / value_high_eur — realistic resale range; the
     estimated_market_value_eur is a point inside it.
-13. Output STRICT JSON. No prose, no markdown. The JSON object MUST include
+14. Output STRICT JSON. No prose, no markdown. The JSON object MUST include
    ALL these keys (use empty string / empty array ONLY if truly unknown —
    prefer your best guess with low confidence):
 
@@ -106,11 +117,12 @@ EVALUATION RULES
      "estimated_market_value_eur": number,
      "current_price_eur": number,
      "potential_profit_eur": number,
-     "rarity": "low" | "medium" | "high",
+     "rarity": "low" | "medium" | "high" | "very_high",
      "condition": string,
      "fake_risk": "low" | "medium" | "high",
      "recommendation": "buy" | "watch" | "skip",
      "reasoning": string,          (one sentence, Russian: the verdict)
+     "rarity_note_ru": string,
      "display_name_ru": string,    (short, max 35 chars, e.g. "Seiko A159-4019 G")
      "era_ru": string,             (e.g. "1977" or "конец 1970-х")
      "value_low_eur": number,
@@ -134,7 +146,8 @@ RESPONSE_SCHEMA: dict = {
         "estimated_market_value_eur": {"type": "number"},
         "current_price_eur": {"type": "number"},
         "potential_profit_eur": {"type": "number"},
-        "rarity": {"type": "string", "enum": ["low", "medium", "high"]},
+        "rarity": {"type": "string", "enum": ["low", "medium", "high", "very_high"]},
+        "rarity_note_ru": {"type": "string"},
         "condition": {"type": "string"},
         "fake_risk": {"type": "string", "enum": ["low", "medium", "high"]},
         "recommendation": {"type": "string", "enum": ["buy", "watch", "skip"]},
@@ -163,6 +176,7 @@ RESPONSE_SCHEMA: dict = {
         "reasoning",
         "display_name_ru",
         "era_ru",
+        "rarity_note_ru",
         "value_low_eur",
         "value_high_eur",
         "story_ru",

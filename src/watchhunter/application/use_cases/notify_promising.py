@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from watchhunter.application.ports.repository import ListingRepository
+from watchhunter.application.services.deal_evaluator import DealEvaluator
 from watchhunter.application.services.promising_notifier import PromisingNotifier
 from watchhunter.config.logging import get_logger
 
@@ -23,12 +24,14 @@ class NotifyPromisingUseCase:
         repository: ListingRepository,
         promising_notifier: PromisingNotifier,
         min_score: int,
+        deal_evaluator: DealEvaluator | None = None,
         batch_size: int = 25,
         delay_between_messages_s: float = 1.5,
     ) -> None:
         self._repo = repository
         self._notifier = promising_notifier
         self._min_score = min_score
+        self._evaluator = deal_evaluator
         self._batch_size = batch_size
         self._delay = delay_between_messages_s
 
@@ -46,6 +49,9 @@ class NotifyPromisingUseCase:
         log.info("notify.batch_loaded", count=len(items))
 
         for stored in items:
+            # Stored rejections (e.g. below MIN_RARITY) must never go out.
+            if self._evaluator and not self._evaluator.is_promising(stored.evaluation):
+                continue
             outcome = await self._notifier.notify_one(
                 stored.listing, stored.evaluation, stored.evaluation_id
             )

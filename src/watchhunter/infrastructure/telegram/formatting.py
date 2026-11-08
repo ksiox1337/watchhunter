@@ -17,7 +17,13 @@ _VERDICT = {
     Recommendation.WATCH: "🟡 <b>ПРИСМОТРЕТЬСЯ</b>",
     Recommendation.SKIP: "⚪️ <b>ПРОПУСТИТЬ</b>",
 }
-_LEVEL = {"low": "низкая", "medium": "средняя", "high": "высокая"}
+_LEVEL = {"low": "низкая", "medium": "средняя", "high": "высокая", "very_high": "грааль"}
+_RARITY = {
+    "low": "⚪️ Редкость: массовые",
+    "medium": "🔹 Редкость: нечастые",
+    "high": "💎 Редкость: редкие",
+    "very_high": "💎💎 Редкость: грааль",
+}
 _RISK = {"low": "низкий", "medium": "средний", "high": "высокий"}
 _SOURCE = {
     Marketplace.KLEINANZEIGEN: "Kleinanzeigen",
@@ -104,7 +110,11 @@ def format_card(
     multiple = f" (×{(mid / total):.1f})".replace(".", ",") if total > 0 and profit > 0 else ""
     value_line = f"📈 Рынок {market} → <b>{money(profit, sign=True)}</b>{multiple}"
 
-    lines = [head, title, "", price_line, value_line]
+    rarity_line = _RARITY.get(ev.rarity.value, "")
+    if ev.rarity_note:
+        rarity_line += f" — {html.escape(ev.rarity_note)}"
+
+    lines = [head, title, rarity_line, "", price_line, value_line]
     if not is_bin:
         lines.append(f"⏳ {_end_label(listing.end_time, now, tz)}")
     caption = "\n".join(lines)
@@ -120,7 +130,7 @@ def format_card(
     if ev.checks:
         parts.append("<b>Проверить</b>\n" + _bullets(ev.checks, 2))
     parts.append(
-        f"<i>Редкость {_level(ev.rarity)} · подделка {_risk(ev.fake_risk)} · "
+        f"<i>Подделка: риск {_risk(ev.fake_risk)} · "
         f"уверенность {ev.confidence}%</i>"
     )
     room = limit - len(caption) - len("\n\n<blockquote expandable></blockquote>")
