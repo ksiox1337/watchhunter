@@ -296,6 +296,9 @@ class ScanWatchesUseCase:
                         brand=evaluation.brand,
                         model=evaluation.model,
                     )
+                    # Rejected evaluations aren't stored, so remember the
+                    # verdict in memory: no new photo evaluation every scan.
+                    self._remember_triaged_out(listing.external_id)
                     # In fresh-only mode, record the listing so we never
                     # re-analyze it on the next scan.
                     if self._only_new:
