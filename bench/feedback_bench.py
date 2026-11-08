@@ -1,6 +1,6 @@
 """Re-score the listings you rated in Telegram with the current prompts.
 
-  .venv/bin/python bench/feedback_bench.py [min_score] [min_rarity]
+  .venv/bin/python bench/feedback_bench.py [min_score] [min_rarity] [max_price_eur]
 
 For every rated listing: Jev triage verdict + gpt-5-mini verdict (no card,
 no web search). Prints what the bot would send with the given thresholds
@@ -22,7 +22,7 @@ from watchhunter.domain.models import BuyingOption, Listing, Marketplace
 from watchhunter.infrastructure.persistence.models import EvaluationRow, FeedbackRow, ListingRow
 
 
-async def main(min_score: int, min_rarity: str) -> None:
+async def main(min_score: int, min_rarity: str, max_price: float | None = None) -> None:
     c = await build_container(Settings())
     try:
         async with c.database.session() as s:
@@ -63,6 +63,7 @@ async def main(min_score: int, min_rarity: str) -> None:
             send = bool(
                 t.interesting and e and e.recommendation != Recommendation.SKIP
                 and e.score >= min_score and (floor is None or e.rarity.rank >= floor.rank)
+                and (max_price is None or float(lst.current_price_eur) <= max_price)
             )
             liked = action in ("like", "bought")
             tp += send and liked; fp += send and not liked; fn += (not send) and liked; tn += (not send) and not liked
@@ -78,4 +79,8 @@ async def main(min_score: int, min_rarity: str) -> None:
 
 if __name__ == "__main__":
     a = sys.argv[1:]
-    asyncio.run(main(int(a[0]) if a else 60, a[1] if len(a) > 1 else "medium"))
+    asyncio.run(main(
+        int(a[0]) if a else 60,
+        a[1] if len(a) > 1 else "medium",
+        float(a[2]) if len(a) > 2 else None,
+    ))

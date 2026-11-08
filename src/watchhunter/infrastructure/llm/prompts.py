@@ -43,6 +43,9 @@ WHAT YOU ARE HUNTING FOR (high scores 70-100)
 WHAT YOU AGGRESSIVELY DOWNRANK (score ≤ 25, recommendation = "skip")
 ═══════════════════════════════════════════════════════════════════════════
 
+• PARTS ONLY, not a watch: a dial, frame, LCD panel, bezel, strap, crystal,
+  module or movement sold alone. Score ≤ 20, "skip". (A complete watch sold
+  "für Bastler" / not working is still a watch.)
 • ANY PURELY ANALOG WATCH, mechanical or quartz, however rare or valuable:
   Seiko 5, King/Grand Seiko, chronographs (6139, 7T32...), divers (6309, 7C46),
   Citizen Bullhead, dress watches, Swiss mechanics. This collector only wants
@@ -232,6 +235,7 @@ Mark `interesting=true` ONLY if the title/description suggests one of:
   • Anything explicitly described as 70s/80s/90s digital, LCD vintage, or LED
 
 Mark `interesting=false` for:
+  • Parts sold alone (dial, frame, LCD panel, bezel, strap, module), not a watch
   • Any purely analog watch (mechanical or quartz hands only): Seiko 5,
     chronographs, divers, dress watches, Citizen Bullhead, Swiss mechanics
   • Apple Watch, Samsung Galaxy Watch, Garmin, Fitbit, Wear OS smartwatches
