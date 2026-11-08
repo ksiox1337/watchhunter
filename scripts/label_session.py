@@ -70,6 +70,8 @@ async def main(n: int) -> None:
     c = await build_container(s)
     try:
         pool = await gather_pool(c, s)
+        # Never ask twice: skip anything already sent (rated sessions, finds).
+        pool = [x for x in pool if not await c.repository.was_ever_notified(x.external_id)]
         chosen = pick(pool, n)
         print(f"pool {len(pool)} -> sending {len(chosen)}")
         analyzer = getattr(c.analyzer, "_evaluator", c.analyzer)
