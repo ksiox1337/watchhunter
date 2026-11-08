@@ -84,6 +84,10 @@ def format_card(
 
     kind = "Купить сейчас" if is_bin else "Аукцион"
     head = f"{_VERDICT.get(ev.recommendation, '')} · {kind} · <b>{ev.score}</b>/100"
+    if ev.taste is not None:
+        head += f" · 🎯 {round(ev.taste * 100)}%"
+    if ev.explore:
+        head = "🎓 <i>для обучения</i> · " + head
     name = ev.display_name or f"{ev.brand} {ev.model}".strip()
     title = f"<b>{html.escape(name)}</b>"
     if ev.era:

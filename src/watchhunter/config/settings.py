@@ -166,6 +166,14 @@ class Settings(BaseSettings):
     min_score: int = 60
     # Only notify references at least this rare: "", low, medium, high, very_high.
     min_rarity: str = ""
+    # ─── Taste model (learns from 👍 💸 👎 💰) ─────────────────────────────
+    taste_enabled: bool = True
+    # Send only when P(you like it) >= threshold, plus a share of exploration
+    # picks below it so the model keeps learning what it isn't sure about.
+    taste_threshold: float = 0.4
+    taste_explore_rate: float = 0.15
+    taste_retrain_hours: int = 5
+
     # Only notify when estimated value - price is at least this (EUR).
     min_profit_eur: Decimal = Decimal("30")
     auction_ends_within_hours: int = 24

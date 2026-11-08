@@ -44,6 +44,7 @@ from watchhunter.infrastructure.ratelimit.limiter import RateLimiter
 from watchhunter.infrastructure.telegram.adapter import TelegramNotifierAdapter
 from watchhunter.infrastructure.telegram.client import TelegramBotClient
 from watchhunter.infrastructure.telegram.updates import TelegramUpdates
+from watchhunter.learning.service import TasteService
 from watchhunter.sales.repository import SalesRepository, SaleStats
 from watchhunter.sales.tracker import SalesTracker
 from watchhunter.scheduler.scheduler import Scheduler
@@ -121,8 +122,18 @@ async def build_container(settings: Settings) -> Container:
     )
     notifier: NotifierPort = TelegramNotifierAdapter(client=telegram, timezone=settings.timezone)
 
+    taste = TasteService(
+        database=database,
+        path=settings.data_dir / "preference.joblib",
+        threshold=settings.taste_threshold,
+        explore_rate=settings.taste_explore_rate,
+        report=lambda text: telegram.send_message(text=text),
+    )
+
     async def on_evaluated(listing: Listing, ev: WatchEvaluation) -> WatchEvaluation:
-        """After every evaluation: follow the auction to its end; check the photo."""
+        """After every evaluation: taste score, follow the auction, check the photo."""
+        if settings.taste_enabled:
+            ev = taste.score(listing, ev)
         await sales_repo.track(listing, ev)
         if listing.image_urls:
             match = await photos.check_and_add(
@@ -149,6 +160,7 @@ async def build_container(settings: Settings) -> Container:
         min_score=settings.min_score,
         min_rarity=settings.min_rarity,
         min_profit_eur=settings.min_profit_eur or None,
+        taste_threshold=settings.taste_threshold if settings.taste_enabled else None,
     )
     promising_notifier = PromisingNotifier(
         notifier=notifier,
@@ -260,6 +272,7 @@ async def build_container(settings: Settings) -> Container:
         extra_jobs=[
             ("sales_tracker", SalesTracker(repository=sales_repo, marketplace=marketplace).execute, 180),
             ("telegram_updates", TelegramUpdates(client=telegram, database=database).execute, 3),
+            ("taste_retrain", taste.retrain, settings.taste_retrain_hours * 3600),
         ],
     )
 

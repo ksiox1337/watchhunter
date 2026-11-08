@@ -18,8 +18,14 @@ class DealEvaluator:
     """
 
     def __init__(
-        self, *, min_score: int, min_rarity: str = "", min_profit_eur: Decimal | None = None
+        self,
+        *,
+        min_score: int,
+        min_rarity: str = "",
+        min_profit_eur: Decimal | None = None,
+        taste_threshold: float | None = None,
     ) -> None:
+        self._taste_threshold = taste_threshold
         self._min_score = min_score
         # Hard floor on (estimated value - current price): a €10 watch worth
         # €35 is not worth a message, whatever the model's score says.
@@ -33,6 +39,14 @@ class DealEvaluator:
         if ev.score < self._min_score:
             return False
         if self._min_rarity is not None and ev.rarity.rank < self._min_rarity.rank:
+            return False
+        # Taste model gate: below its threshold only exploration picks pass.
+        if (
+            self._taste_threshold is not None
+            and ev.taste is not None
+            and ev.taste < self._taste_threshold
+            and not ev.explore
+        ):
             return False
         if self._min_profit is not None and (
             ev.estimated_market_value_eur - ev.current_price_eur < self._min_profit

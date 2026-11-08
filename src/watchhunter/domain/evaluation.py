@@ -69,6 +69,10 @@ class WatchEvaluation(BaseModel):
     sales_unsold: int = 0
     sales_median_eur: Decimal | None = None
     photo_seen_url: str = ""
+    # Your taste model: probability you'd mark this 👍/💸/💰; explore = sent
+    # below the threshold on purpose, to keep learning.
+    taste: float | None = None
+    explore: bool = False
     raw_response: dict[str, Any] = Field(default_factory=dict)
 
     @property
@@ -109,4 +113,6 @@ def presentation_fields(raw: dict[str, Any]) -> dict[str, Any]:
         "sales_unsold": int((raw.get("sales") or {}).get("unsold") or 0),
         "sales_median_eur": dec((raw.get("sales") or {}).get("median")),
         "photo_seen_url": str((raw.get("photo_match") or {}).get("listing_url") or ""),
+        "taste": (raw.get("taste") or {}).get("p"),
+        "explore": bool((raw.get("taste") or {}).get("explore")),
     }
