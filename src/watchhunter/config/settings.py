@@ -106,31 +106,26 @@ class Settings(BaseSettings):
     kleinanzeigen_warmup_on_start: bool = True
     kleinanzeigen_rate_limit_rpm: int = 20
 
-    # ─── Analyzer (LLM provider) ───────────────────────────────────────────
-    # AnalyzerPort backend selection. Triage and eval can use different
-    # providers — typical hybrid is DeepSeek (cheap text) for triage + Gemini
-    # (vision) for eval.
-    #   gemini   — Google Gemini (vision + structured JSON)
-    #   deepseek — DeepSeek V4 (text-only on api.deepseek.com)
-    analyzer_provider: str = "gemini"  # legacy single-provider; used as default
-    triage_provider: str = ""  # falls back to analyzer_provider if empty
-    eval_provider: str = ""  # falls back to analyzer_provider if empty
+    # ─── Analyzer (OpenAI) ─────────────────────────────────────────────────
+    # Triage = cheap text-only verdict on titles, batched many per call.
+    # Eval   = multimodal deep look at the few that pass triage.
+    openai_api_key: str = ""
+    # Optional: any OpenAI-compatible endpoint (proxy, Azure-compatible gateway, …).
+    openai_base_url: str = ""
+    openai_model: str = "gpt-5-mini"
+    openai_triage_model: str = "gpt-5-nano"
+    # gpt-5 family only: "minimal" | "low" | "medium" | "high". Minimal = fastest, cheapest.
+    openai_reasoning_effort: str = "minimal"
+    # "low" = fixed ~85 tokens/image; "high"/"auto" tile the image (more tokens, finer detail).
+    openai_image_detail: str = "low"
+    openai_rate_limit_rpm: int = 300
+    openai_triage_rate_limit_rpm: int = 300
+    max_images_per_listing: int = 4
+    triage_batch_size: int = 25
+    # Parallel evaluations per scan.
+    eval_concurrency: int = 8
 
-    # ─── Gemini ────────────────────────────────────────────────────────────
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-pro"
-    gemini_triage_model: str = "gemini-2.5-flash"
-    gemini_max_images_per_listing: int = 4
-    gemini_rate_limit_rpm: int = 5
-    gemini_triage_rate_limit_rpm: int = 30
-
-    # ─── DeepSeek ──────────────────────────────────────────────────────────
-    deepseek_api_key: str = ""
-    deepseek_model: str = "deepseek-chat"
-    deepseek_triage_model: str = "deepseek-chat"
-    deepseek_rate_limit_rpm: int = 30
-    deepseek_triage_rate_limit_rpm: int = 60
-    # Hard daily spend cap. When today's recorded Gemini spend + the estimated
+    # Hard daily spend cap. When today's recorded LLM spend + the estimated
     # cost of the next call would exceed this, the call is refused (triage
     # treats it as "not interesting"; eval skips). 0 / unset = no cap.
     max_daily_cost_usd: Decimal = Decimal("0")

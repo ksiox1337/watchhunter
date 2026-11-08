@@ -1,4 +1,4 @@
-"""Prompts and response schema for the Gemini watch-expert role."""
+"""Prompts and strict JSON schemas for the watch-expert analyzer (provider-neutral)."""
 
 from __future__ import annotations
 
@@ -101,12 +101,13 @@ EVALUATION RULES
 
 RESPONSE_SCHEMA: dict = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "interesting": {"type": "boolean"},
-        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "score": {"type": "integer"},
         "brand": {"type": "string"},
         "model": {"type": "string"},
-        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+        "confidence": {"type": "integer"},
         "estimated_market_value_eur": {"type": "number"},
         "current_price_eur": {"type": "number"},
         "potential_profit_eur": {"type": "number"},
@@ -166,10 +167,14 @@ Mark `interesting=false` for:
   • Children's, replica, or no-name "Lederuhr"/"Designer" listings
 
 Output STRICT JSON: {"interesting": bool, "reason": "<10 word reason>"}.
+When you get a numbered list of listings, judge each one on its own and return
+{"items": [{"id": "<number>", "interesting": bool, "reason": "<10 words>"}, ...]}
+with exactly one item per listing.
 """
 
 TRIAGE_SCHEMA: dict = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "interesting": {"type": "boolean"},
         "reason": {"type": "string"},
@@ -178,10 +183,45 @@ TRIAGE_SCHEMA: dict = {
 }
 
 
+TRIAGE_BATCH_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "id": {"type": "string"},
+                    "interesting": {"type": "boolean"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["id", "interesting", "reason"],
+            },
+        }
+    },
+    "required": ["items"],
+}
+
+# Descriptions are capped: the title carries the decision, long seller text only adds tokens.
+TRIAGE_DESCRIPTION_CHARS = 400
+
+
+def build_triage_batch_prompt(listings: list[tuple[str, str, str]]) -> str:
+    """listings: (id, title, description). One numbered block per listing."""
+    blocks = [
+        f"[{lid}] Title: {title}\n    Description: "
+        f"{(desc or '(none)')[:TRIAGE_DESCRIPTION_CHARS]}"
+        for lid, title, desc in listings
+    ]
+    return "\n".join(blocks) + "\n\nReturn ONLY the JSON object with one item per id."
+
+
 def build_triage_prompt(*, title: str, description: str) -> str:
     return (
         f"Title: {title}\n"
-        f"Description: {description or '(none)'}\n\n"
+        f"Description: {(description or '(none)')[:TRIAGE_DESCRIPTION_CHARS]}\n\n"
         "Decide interesting/not. Return ONLY the JSON object."
     )
 

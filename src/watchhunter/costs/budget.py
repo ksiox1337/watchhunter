@@ -1,6 +1,6 @@
-"""BudgetGuard — protects you from runaway Gemini spend.
+"""BudgetGuard — protects you from runaway LLM spend.
 
-Used by the Gemini client. Before every call:
+Used by the LLM client. Before every call:
   1. Estimate the call's cost from the model's pricing.
   2. Check: today's spend + estimated cost > MAX_DAILY_COST_USD?
         → raise BudgetExhaustedError; caller treats as a soft failure.
@@ -27,7 +27,7 @@ log = get_logger(__name__)
 
 
 class BudgetGuard:
-    """Tracks Gemini spend against a daily cap. Thread-safe via a lock."""
+    """Tracks LLM spend against a daily cap. Thread-safe via a lock."""
 
     def __init__(
         self,
@@ -83,7 +83,7 @@ class BudgetGuard:
                 est_cost_usd=f"{est_cost:.4f}",
             )
             raise BudgetExhaustedError(
-                f"Daily Gemini cap ${self._max:.2f} would be exceeded "
+                f"Daily LLM cap ${self._max:.2f} would be exceeded "
                 f"(today=${self._today_total:.4f}, est=${est_cost:.4f})"
             )
 
@@ -106,9 +106,10 @@ class BudgetGuard:
         model: str,
         input_tokens: int,
         output_tokens: int,
+        cached_input_tokens: int = 0,
     ) -> None:
         """Persist actual usage from the response."""
-        cost = estimate_cost_usd(model, input_tokens, output_tokens)
+        cost = estimate_cost_usd(model, input_tokens, output_tokens, cached_input_tokens)
         await self._repo.record(
             model=model,
             input_tokens=input_tokens,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from decimal import Decimal
 
 from watchhunter.application.ports.analyzer import AnalyzerPort
@@ -66,6 +67,10 @@ class ScanWatchesUseCase:
         # what's already up without analyzing, so only NEW arrivals trigger work.
         self._warmup_pending = warmup_first_scan and only_new
         self._semaphore = asyncio.Semaphore(concurrency)
+        # Titles don't change, so a "not interesting" verdict holds: remember it
+        # in memory for the re-analysis window instead of paying triage again on
+        # every scan (auctions are re-listed by eBay search every 15 min).
+        self._triaged_out: dict[str, float] = {}
 
     async def execute(self) -> dict[str, int]:
         stats = {
@@ -91,37 +96,44 @@ class ScanWatchesUseCase:
 
         eligible: list[Listing] = []
 
-        for marketplace in self._marketplaces:
-            for category_id in self._category_ids:
-                query = MarketplaceQuery(
-                    marketplace=marketplace,
-                    category_id=category_id if isinstance(category_id, str) else None,
-                    keywords=self._keywords,
-                    ends_within_hours=self._ends_within_hours,
-                    only_with_bids=self._buying_option == BuyingOption.AUCTION,
-                    max_price_eur=self._max_price_eur,
-                    buying_option=self._buying_option,
-                    max_pages=self._max_pages_per_query,
+        async def fetch(marketplace: Marketplace, category_id: str | None) -> list[Listing]:
+            query = MarketplaceQuery(
+                marketplace=marketplace,
+                category_id=category_id if isinstance(category_id, str) else None,
+                keywords=self._keywords,
+                ends_within_hours=self._ends_within_hours,
+                only_with_bids=self._buying_option == BuyingOption.AUCTION,
+                max_price_eur=self._max_price_eur,
+                buying_option=self._buying_option,
+                max_pages=self._max_pages_per_query,
+            )
+            found: list[Listing] = []
+            try:
+                async for listing in self._marketplace.search_auctions(query):
+                    found.append(listing)
+            except MarketplaceError as exc:
+                log.error(
+                    "scan.marketplace_error",
+                    marketplace=marketplace.value,
+                    error=str(exc),
                 )
-                try:
-                    async for listing in self._marketplace.search_auctions(query):
-                        stats["fetched"] += 1
-                        if listing.external_id in seen_ids:
-                            continue
-                        seen_ids.add(listing.external_id)
+                stats["errors"] += 1
+            return found
 
-                        if not self._filter.is_eligible(listing):
-                            stats["filtered_out"] += 1
-                            continue
-
-                        eligible.append(listing)
-                except MarketplaceError as exc:
-                    log.error(
-                        "scan.marketplace_error",
-                        marketplace=marketplace.value,
-                        error=str(exc),
-                    )
-                    stats["errors"] += 1
+        # All (marketplace, category) searches run at once; the adapter's rate
+        # limiter still paces the HTTP requests.
+        batches = await asyncio.gather(
+            *(fetch(m, c) for m in self._marketplaces for c in self._category_ids)
+        )
+        for listing in (lst for batch in batches for lst in batch):
+            stats["fetched"] += 1
+            if listing.external_id in seen_ids:
+                continue
+            seen_ids.add(listing.external_id)
+            if not self._filter.is_eligible(listing):
+                stats["filtered_out"] += 1
+                continue
+            eligible.append(listing)
 
         # Order the work so the right items get analyzed first — this matters
         # because tasks acquire the concurrency semaphore in creation order and,
@@ -138,20 +150,41 @@ class ScanWatchesUseCase:
         if self._buying_option == BuyingOption.AUCTION:
             eligible.sort(key=lambda listing: listing.end_time)
 
-        tasks = [
-            asyncio.create_task(self._process_one(listing, stats))
-            for listing in eligible
-        ]
+        # 1. Cheap local checks (DB dedup, triage memory), in parallel.
+        keep = await asyncio.gather(*(self._needs_work(lst, stats) for lst in eligible))
+        todo = [lst for lst, k in zip(eligible, keep, strict=True) if k]
 
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=False)
+        # 2. Batched text triage: many titles per model call.
+        verdicts = await self._analyzer.triage_many(todo) if todo else []
+        passed = []
+        for listing, verdict in zip(todo, verdicts, strict=True):
+            if verdict.interesting:
+                passed.append((listing, verdict.reason))
+                continue
+            stats["triaged_out"] += 1
+            if verdict.reason != "budget_exhausted":
+                self._remember_triaged_out(listing.external_id)
+                if self._only_new:
+                    await self._repo.upsert_listing(listing)
+            log.info(
+                "scan.triaged_out",
+                external_id=listing.external_id,
+                reason=verdict.reason,
+                title=listing.title[:80],
+            )
+
+        # 3. Gallery + multimodal evaluation for the few that passed, in parallel.
+        if passed:
+            await asyncio.gather(
+                *(self._process_one(lst, reason, stats) for lst, reason in passed)
+            )
 
         log.info("scan.complete", **stats)
         return stats
 
     async def _warmup(self, stats: dict[str, int]) -> None:
         """First-scan-after-startup pass: record every listing as 'seen' without
-        analyzing any of them. Cheap (no Gemini calls, no item-page fetches)."""
+        analyzing any of them. Cheap (no LLM calls, no item-page fetches)."""
         seen: set[str] = set()
         for marketplace in self._marketplaces:
             for category_id in self._category_ids:
@@ -182,49 +215,43 @@ class ScanWatchesUseCase:
                     )
                     stats["errors"] += 1
 
-    async def _process_one(self, listing: Listing, stats: dict[str, int]) -> None:
+    def _remember_triaged_out(self, external_id: str) -> None:
+        now = time.monotonic()
+        self._triaged_out[external_id] = now
+        if len(self._triaged_out) > 50_000:
+            cutoff = now - self._reanalysis_ttl_hours * 3600
+            self._triaged_out = {k: t for k, t in self._triaged_out.items() if t > cutoff}
+
+    async def _needs_work(self, listing: Listing, stats: dict[str, int]) -> bool:
+        """False when the listing was already handled — no model call needed."""
+        try:
+            seen_at = self._triaged_out.get(listing.external_id)
+            if seen_at is not None and (
+                time.monotonic() - seen_at < self._reanalysis_ttl_hours * 3600
+            ):
+                stats["triaged_out"] += 1
+                return False
+            # Fresh-only mode (BIN): if we've ever seen it, it wasn't a steal.
+            if self._only_new and await self._repo.was_ever_seen(listing.external_id):
+                stats["already_notified"] += 1
+                return False
+            if await self._repo.was_ever_notified(listing.external_id):
+                stats["already_notified"] += 1
+                return False
+            recent = await self._repo.get_recent_evaluation(
+                listing.external_id, self._reanalysis_ttl_hours
+            )
+            return recent is None
+        except Exception as exc:
+            log.exception("scan.precheck_error", external_id=listing.external_id, error=str(exc))
+            stats["errors"] += 1
+            return False
+
+    async def _process_one(
+        self, listing: Listing, triage_reason: str, stats: dict[str, int]
+    ) -> None:
         async with self._semaphore:
             try:
-                # ── Fresh-only mode (BIN): if we've ever even *seen* this
-                # listing before, skip. "If it's still up, it wasn't a steal."
-                if self._only_new and await self._repo.was_ever_seen(
-                    listing.external_id
-                ):
-                    stats["already_notified"] += 1
-                    log.debug(
-                        "scan.already_seen",
-                        external_id=listing.external_id,
-                    )
-                    return
-
-                # ── Already notified? Suppress duplicates across restarts.
-                if await self._repo.was_ever_notified(listing.external_id):
-                    stats["already_notified"] += 1
-                    log.debug(
-                        "scan.already_notified",
-                        external_id=listing.external_id,
-                    )
-                    return
-
-                recent = await self._repo.get_recent_evaluation(
-                    listing.external_id, self._reanalysis_ttl_hours
-                )
-                if recent is not None:
-                    log.debug("scan.skip_recent", external_id=listing.external_id)
-                    return
-
-                # ── Stage 1: cheap text-only triage ──────────────────────
-                triage = await self._analyzer.triage(listing)
-                if not triage.interesting:
-                    stats["triaged_out"] += 1
-                    log.info(
-                        "scan.triaged_out",
-                        external_id=listing.external_id,
-                        reason=triage.reason,
-                        title=listing.title[:80],
-                    )
-                    return
-
                 # ── Stage 2a: enrich with full gallery from item page ────
                 gallery = ()
                 try:
@@ -249,7 +276,7 @@ class ScanWatchesUseCase:
                     "scan.enriched",
                     external_id=listing.external_id,
                     images=len(enriched_images),
-                    triage_reason=triage.reason,
+                    triage_reason=triage_reason,
                 )
 
                 # ── Stage 2b: full multimodal evaluation ─────────────────

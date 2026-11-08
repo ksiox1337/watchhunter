@@ -13,7 +13,6 @@ from watchhunter.application.ports.marketplace import MarketplacePort
 from watchhunter.application.ports.notifier import NotifierPort
 from watchhunter.application.ports.repository import ListingRepository
 from watchhunter.application.services.deal_evaluator import DealEvaluator
-from watchhunter.application.services.hybrid_analyzer import HybridAnalyzerAdapter
 from watchhunter.application.services.listing_filter import ListingFilter
 from watchhunter.application.services.promising_notifier import PromisingNotifier
 from watchhunter.application.use_cases.notify_promising import NotifyPromisingUseCase
@@ -25,14 +24,12 @@ from watchhunter.domain.models import BuyingOption, Marketplace
 from watchhunter.infrastructure.ebay.adapter import EbayApiMarketplaceAdapter
 from watchhunter.infrastructure.ebay.client import EbayBrowseClient
 from watchhunter.infrastructure.ebay.html_adapter import EbayHtmlMarketplaceAdapter
-from watchhunter.infrastructure.deepseek.adapter import DeepSeekAnalyzerAdapter
-from watchhunter.infrastructure.deepseek.client import DeepSeekClient
+from watchhunter.infrastructure.http.client import HttpClient
 from watchhunter.infrastructure.kleinanzeigen.adapter import (
     KleinanzeigenMarketplaceAdapter,
 )
-from watchhunter.infrastructure.gemini.adapter import GeminiAnalyzerAdapter
-from watchhunter.infrastructure.gemini.client import GeminiClient
-from watchhunter.infrastructure.http.client import HttpClient
+from watchhunter.infrastructure.openai_api.adapter import OpenAIAnalyzerAdapter
+from watchhunter.infrastructure.openai_api.client import OpenAIClient
 from watchhunter.infrastructure.persistence.database import Database
 from watchhunter.infrastructure.persistence.repository import SqlAlchemyListingRepository
 from watchhunter.infrastructure.persistence.usage_repository import (
@@ -120,7 +117,8 @@ async def build_container(settings: Settings) -> Container:
         ends_within_hours=settings.auction_ends_within_hours,
         reanalysis_ttl_hours=settings.reanalysis_ttl_hours,
         max_price_eur=settings.max_price_eur,
-        gallery_max_images=settings.gemini_max_images_per_listing,
+        gallery_max_images=settings.max_images_per_listing,
+        concurrency=settings.eval_concurrency,
     )
     notify_uc = NotifyPromisingUseCase(
         repository=repository,
@@ -156,7 +154,8 @@ async def build_container(settings: Settings) -> Container:
             ends_within_hours=settings.auction_ends_within_hours,
             reanalysis_ttl_hours=settings.reanalysis_ttl_hours,
             max_price_eur=settings.max_price_eur,
-            gallery_max_images=settings.gemini_max_images_per_listing,
+            gallery_max_images=settings.max_images_per_listing,
+        concurrency=settings.eval_concurrency,
             buying_option=BuyingOption.FIXED_PRICE,
             only_new=True,
             max_pages_per_query=settings.kleinanzeigen_pages_per_query,
@@ -178,7 +177,8 @@ async def build_container(settings: Settings) -> Container:
             ends_within_hours=settings.auction_ends_within_hours,
             reanalysis_ttl_hours=settings.reanalysis_ttl_hours,
             max_price_eur=settings.max_price_eur,
-            gallery_max_images=settings.gemini_max_images_per_listing,
+            gallery_max_images=settings.max_images_per_listing,
+        concurrency=settings.eval_concurrency,
             buying_option=BuyingOption.FIXED_PRICE,
             only_new=True,
             max_pages_per_query=settings.buy_now_html_pages_per_query,
@@ -239,67 +239,31 @@ def _build_marketplace(settings: Settings, http: HttpClient) -> MarketplacePort:
 def _build_analyzer(
     settings: Settings, http: HttpClient, budget: BudgetGuard
 ) -> AnalyzerPort:
-    default = (settings.analyzer_provider or "gemini").lower().strip()
-    triage = (settings.triage_provider or default).lower().strip()
-    eval_ = (settings.eval_provider or default).lower().strip()
-
-    if triage == eval_:
-        # Single-provider — preserve old behavior, one adapter handles both.
-        log.info("container.analyzer", impl=triage, mode="single")
-        return _build_one_provider(triage, settings, http, budget)
-
     log.info(
         "container.analyzer",
-        impl="hybrid",
-        triage=triage,
-        eval=eval_,
+        impl="openai",
+        triage_model=settings.openai_triage_model,
+        eval_model=settings.openai_model,
+        batch=settings.triage_batch_size,
     )
-    triage_adapter = _build_one_provider(triage, settings, http, budget)
-    eval_adapter = _build_one_provider(eval_, settings, http, budget)
-    return HybridAnalyzerAdapter(
-        triage_analyzer=triage_adapter,
-        eval_analyzer=eval_adapter,
-    )
-
-
-def _build_one_provider(
-    provider: str,
-    settings: Settings,
-    http: HttpClient,
-    budget: BudgetGuard,
-) -> AnalyzerPort:
-    if provider == "deepseek":
-        ds_client = DeepSeekClient(
-            api_key=settings.deepseek_api_key,
-            model=settings.deepseek_model,
-            budget=budget,
-        )
-        return DeepSeekAnalyzerAdapter(
-            client=ds_client,
-            http=http,
-            rate_limiter=RateLimiter(rate_per_minute=settings.deepseek_rate_limit_rpm),
-            triage_rate_limiter=RateLimiter(
-                rate_per_minute=settings.deepseek_triage_rate_limit_rpm
-            ),
-            triage_model=settings.deepseek_triage_model,
-            max_images=settings.gemini_max_images_per_listing,
-        )
-
-    # default: gemini
-    client = GeminiClient(
-        api_key=settings.gemini_api_key,
-        model=settings.gemini_model,
+    client = OpenAIClient(
+        api_key=settings.openai_api_key,
+        model=settings.openai_model,
+        base_url=settings.openai_base_url or None,
+        reasoning_effort=settings.openai_reasoning_effort,
         budget=budget,
     )
-    return GeminiAnalyzerAdapter(
+    return OpenAIAnalyzerAdapter(
         client=client,
         http=http,
-        rate_limiter=RateLimiter(rate_per_minute=settings.gemini_rate_limit_rpm),
+        rate_limiter=RateLimiter(rate_per_minute=settings.openai_rate_limit_rpm),
         triage_rate_limiter=RateLimiter(
-            rate_per_minute=settings.gemini_triage_rate_limit_rpm
+            rate_per_minute=settings.openai_triage_rate_limit_rpm
         ),
-        triage_model=settings.gemini_triage_model,
-        max_images=settings.gemini_max_images_per_listing,
+        triage_model=settings.openai_triage_model,
+        max_images=settings.max_images_per_listing,
+        image_detail=settings.openai_image_detail,
+        triage_batch_size=settings.triage_batch_size,
     )
 
 

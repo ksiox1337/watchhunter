@@ -1,4 +1,4 @@
-"""Port for any LLM-based watch analyzer (Gemini, OpenAI, …)."""
+"""Port for any LLM-based watch analyzer."""
 
 from __future__ import annotations
 
@@ -24,6 +24,10 @@ class AnalyzerPort(ABC):
     async def triage(self, listing: Listing) -> TriageResult:
         """Text-only quick judgement: is this listing worth the multimodal call?"""
         raise NotImplementedError
+
+    async def triage_many(self, listings: list[Listing]) -> list[TriageResult]:
+        """Triage several listings; adapters override this to batch them in one call."""
+        return [await self.triage(listing) for listing in listings]
 
     @abstractmethod
     async def evaluate(self, listing: Listing) -> WatchEvaluation:

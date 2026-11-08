@@ -1,70 +1,69 @@
-"""Gemini API pricing table. Values verified from ai.google.dev/gemini-api/docs/pricing.
+"""LLM pricing table (USD per token). Source: openai.com/api/pricing, checked 2026-11.
 
-All numbers are USD per 1 token (i.e. the rate from the docs / 1,000,000).
-Update when Google publishes new prices.
-
-Note on context tier: 2.5 Pro has a higher rate above 200K input tokens.
-Our workload is far below that, so we use the standard rate uniformly.
+`cached_input` is what OpenAI bills for prompt tokens served from its automatic
+prompt cache (a repeated prefix of >= 1024 tokens). Older rows stay so that
+historical usage rows in the database still price correctly.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 
-# USD per 1 token (price per 1M tokens / 1_000_000), expressed as Decimal for
-# loss-free aggregation when totals get small.
+
 def _per_token(per_million: str) -> Decimal:
     return Decimal(per_million) / Decimal("1000000")
 
 
-GEMINI_PRICING: dict[str, dict[str, Decimal]] = {
-    # Live models (as of 2026-06)
-    "gemini-2.5-pro": {
-        "input": _per_token("1.25"),
-        "output": _per_token("10.00"),
-    },
-    "gemini-2.5-flash": {
-        "input": _per_token("0.30"),
-        "output": _per_token("2.50"),
-    },
-    "gemini-2.5-flash-lite": {
-        "input": _per_token("0.10"),
-        "output": _per_token("0.40"),
-    },
-    # Deprecated (shut down 2026-06-01) but kept for historical aggregation
-    "gemini-2.0-flash": {
-        "input": _per_token("0.10"),
-        "output": _per_token("0.40"),
-    },
-    "gemini-2.0-flash-lite": {
-        "input": _per_token("0.075"),
-        "output": _per_token("0.30"),
-    },
-    # DeepSeek V4 (as of 2026-06). Multimodal vision support, JSON structured
-    # output, OpenAI-compatible API, no daily request cap.
-    "deepseek-chat": {  # V4 Pro tier
-        "input": _per_token("0.435"),
-        "output": _per_token("0.87"),
-    },
-    "deepseek-chat-flash": {  # V4 Flash tier — cheapest multimodal
-        "input": _per_token("0.14"),
-        "output": _per_token("0.28"),
-    },
-    "deepseek-reasoner": {
-        "input": _per_token("0.55"),
-        "output": _per_token("2.19"),
-    },
+def _row(inp: str, out: str, cached: str | None = None) -> dict[str, Decimal]:
+    return {
+        "input": _per_token(inp),
+        "output": _per_token(out),
+        "cached_input": _per_token(cached if cached is not None else inp),
+    }
+
+
+PRICING: dict[str, dict[str, Decimal]] = {
+    # OpenAI (current)
+    "gpt-5-nano": _row("0.05", "0.40", "0.005"),
+    "gpt-5-mini": _row("0.25", "2.00", "0.025"),
+    "gpt-5": _row("1.25", "10.00", "0.125"),
+    "gpt-4.1-nano": _row("0.10", "0.40", "0.025"),
+    "gpt-4.1-mini": _row("0.40", "1.60", "0.10"),
+    "gpt-4o-mini": _row("0.15", "0.60", "0.075"),
+    # Historical (previous Gemini / DeepSeek setup)
+    "gemini-2.5-pro": _row("1.25", "10.00"),
+    "gemini-2.5-flash": _row("0.30", "2.50"),
+    "gemini-2.5-flash-lite": _row("0.10", "0.40"),
+    "gemini-2.0-flash": _row("0.10", "0.40"),
+    "gemini-2.0-flash-lite": _row("0.075", "0.30"),
+    "deepseek-chat": _row("0.435", "0.87"),
+    "deepseek-reasoner": _row("0.55", "2.19"),
 }
+
+
+def _lookup(model: str) -> dict[str, Decimal] | None:
+    if model in PRICING:
+        return PRICING[model]
+    # Dated snapshots, e.g. "gpt-5-mini-2025-08-07" -> "gpt-5-mini".
+    for name in sorted(PRICING, key=len, reverse=True):
+        if model.startswith(name + "-"):
+            return PRICING[name]
+    return None
 
 
 def estimate_cost_usd(
     model: str,
     input_tokens: int,
     output_tokens: int,
+    cached_input_tokens: int = 0,
 ) -> Decimal:
-    """Return the USD cost for a single call with the given token counts."""
-    p = GEMINI_PRICING.get(model)
+    """USD cost of one call. `input_tokens` includes the cached ones (OpenAI usage format)."""
+    p = _lookup(model)
     if p is None:
-        # Unknown model → no estimate; treat as zero to avoid spurious blocks.
         return Decimal("0")
-    return (Decimal(input_tokens) * p["input"]) + (Decimal(output_tokens) * p["output"])
+    cached = min(cached_input_tokens, input_tokens)
+    return (
+        Decimal(input_tokens - cached) * p["input"]
+        + Decimal(cached) * p["cached_input"]
+        + Decimal(output_tokens) * p["output"]
+    )

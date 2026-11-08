@@ -1,10 +1,10 @@
 # WatchHunter
 
-Automated scanner that hunts for **undervalued watches** on eBay auctions ending within the next 24 hours, evaluates each candidate with **Gemini** (acting as a watch dealer/auction expert with multimodal vision), persists promising hits in **SQLite**, and pushes them to **Telegram** every hour.
+Automated scanner that hunts for **undervalued watches** on eBay auctions ending within the next 24 hours, triages titles in batches with a cheap OpenAI model, evaluates the survivors with a multimodal OpenAI model (watch dealer/auction expert), persists promising hits in **SQLite**, and pushes them to **Telegram** every hour.
 
 ```
 eBay (API or HTML)  ─┐
-                     ├─►  ListingFilter  ─►  Gemini multimodal eval  ─►  SQLite  ─►  Telegram
+                     ├─►  ListingFilter ─► batched triage ─► OpenAI multimodal eval  ─►  SQLite  ─►  Telegram
 Scheduler (APS)   ──┘                                                              (hourly)
 ```
 
@@ -13,9 +13,9 @@ Scheduler (APS)   ──┘                                                     
 - **Two eBay adapters, hot-swappable**: official Browse API (when you have credentials) and an HTML fallback (no keys required for development).
 - Searches `Watches` (US: 31387) and `Armbanduhren` (DE: 260324) — plus any other marketplace/category you configure.
 - Filters auctions to **bidded + ending within 24h** before LLM cost is incurred.
-- Gemini returns **structured JSON** validated through Pydantic into a `WatchEvaluation`.
+- OpenAI returns **strict structured JSON** (json_schema) validated through Pydantic into a `WatchEvaluation`.
 - Discards anything with `score < 60` or `recommendation == "skip"`.
-- Telegram notifications include photo, price, estimated value, profit, end time, link, and Gemini's reasoning.
+- Telegram notifications include photo, price, estimated value, profit, end time, link, and the model's reasoning.
 - Clean Architecture: `domain` → `application` → `infrastructure` → `presentation`. Ports & adapters make it trivial to add Chrono24, OpenAI, Discord, or Postgres later.
 - Async-first (`asyncio` / `aiohttp` / `aiosqlite`), with retry (`tenacity`) and rate-limiting (`aiolimiter`) on every external call.
 
@@ -35,7 +35,8 @@ src/watchhunter/
 │   ├── http/           shared aiohttp session
 │   ├── ratelimit/      aiolimiter wrapper
 │   ├── ebay/           Browse API + HTML fallback adapters
-│   ├── gemini/         multimodal client + JSON-schema-validated adapter
+│   ├── llm/            prompts + strict JSON schemas
+│   ├── openai_api/     OpenAI client (budget-aware) + analyzer adapter
 │   ├── telegram/       Bot API client + adapter
 │   └── persistence/    SQLAlchemy 2.0 async engine, ORM, repository
 ├── scheduler/          APScheduler (scan every 15m, notify every 60m)
@@ -50,7 +51,7 @@ src/watchhunter/
 Two tables:
 
 - **`listings`** — every unique auction (dedup key: `ebay_item_id`)
-- **`evaluations`** — one row per Gemini analysis, FK to `listings`
+- **`evaluations`** — one row per model evaluation, FK to `listings`
 
 See `src/watchhunter/infrastructure/persistence/models.py`.
 
@@ -61,7 +62,7 @@ See `src/watchhunter/infrastructure/persistence/models.py`.
 ### Prerequisites
 
 - **Python 3.12+**
-- A **Gemini API key** — get one at https://aistudio.google.com/apikey (free tier OK for testing)
+- An **OpenAI API key** — https://platform.openai.com/api-keys
 - A **Telegram bot** — create one via `@BotFather`, then send a message to your bot and grab the chat ID
 - *(Optional)* **eBay developer account** — https://developer.ebay.com — for production-grade access
 
@@ -83,7 +84,7 @@ pip install -e .
 ```bash
 cp .env.example .env
 # then edit .env and set at minimum:
-#   GEMINI_API_KEY
+#   OPENAI_API_KEY
 #   TELEGRAM_BOT_TOKEN
 #   TELEGRAM_CHAT_ID
 # Leave EBAY_USE_API=false until you have eBay credentials — the HTML adapter will be used.
@@ -136,7 +137,7 @@ Restart the app — `container.py` picks the API adapter automatically. No code 
 2. Add a factory in `container._build_marketplace`.
 3. Done. The use cases don't change.
 
-The same applies to `AnalyzerPort` (swap Gemini for OpenAI/Claude) and `NotifierPort` (swap Telegram for Slack/Discord/email).
+The same applies to `AnalyzerPort` (swap OpenAI for another provider) and `NotifierPort` (swap Telegram for Slack/Discord/email).
 
 ---
 
@@ -150,8 +151,10 @@ All settings live in `.env` and are validated at startup via Pydantic. See `.env
 | `NOTIFY_INTERVAL_MINUTES` | 60 | How often to push to Telegram |
 | `MIN_SCORE` | 60 | Discard evaluations below this score |
 | `AUCTION_ENDS_WITHIN_HOURS` | 24 | Auction time window |
-| `REANALYSIS_TTL_HOURS` | 6 | Don't re-call Gemini for the same listing within this window |
-| `GEMINI_RATE_LIMIT_RPM` | 5 | Per the free tier of `gemini-2.5-pro` |
+| `REANALYSIS_TTL_HOURS` | 6 | Don't re-evaluate for the same listing within this window |
+| `OPENAI_MODEL` / `OPENAI_TRIAGE_MODEL` | gpt-5-mini / gpt-5-nano | Eval / triage models |
+| `TRIAGE_BATCH_SIZE` | 25 | Titles judged per triage call |
+| `MAX_DAILY_COST_USD` | 0 | Daily spend cap (0 = none) |
 | `EBAY_MARKETPLACES` | `EBAY_US,EBAY_DE` | Comma-separated |
 | `EBAY_CATEGORY_IDS` | `31387,260324` | Wristwatches / Armbanduhren |
 
@@ -169,7 +172,7 @@ All settings live in `.env` and are validated at startup via Pydantic. See `.env
 ## Operational notes
 
 - **State is local** — the SQLite file lives at `./data/watchhunter.db`. Back it up if you care about history.
-- **Cost control**: `ListingFilter` cuts the candidate list before LLM calls; `REANALYSIS_TTL_HOURS` prevents re-spending on the same listing.
+- **Cost control**: `ListingFilter` cuts the candidate list before any model call; DB dedup and an in-memory "triaged out" memory (for `REANALYSIS_TTL_HOURS`) skip listings already judged; triage sends `TRIAGE_BATCH_SIZE` titles per call so the instruction prompt is paid once per batch; evaluation passes public image URLs at `detail=low` (no download, ~85 tokens/image) with `reasoning_effort=minimal`; `MAX_DAILY_COST_USD` is a hard cap.
 - **Telegram caption limit** is 1024 chars — the adapter truncates safely.
 - **HTML adapter caveat**: best-effort, brittle, against eBay ToS for production. Use the API adapter once you have keys.
 
