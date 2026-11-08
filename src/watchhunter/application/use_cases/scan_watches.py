@@ -89,8 +89,11 @@ class ScanWatchesUseCase:
         # Warmup: silently record everything currently listed so future scans
         # only act on items that genuinely appeared after process start.
         if self._warmup_pending:
-            await self._warmup(stats)
-            self._warmup_pending = False
+            listed = await self._warmup(stats)
+            # A warmup that saw nothing (marketplace blocked or down) recorded
+            # nothing; keep it pending, or the next scan would treat every
+            # existing listing as brand new.
+            self._warmup_pending = listed == 0
             log.info("scan.warmup_done", **stats)
             return stats
 
@@ -182,7 +185,7 @@ class ScanWatchesUseCase:
         log.info("scan.complete", **stats)
         return stats
 
-    async def _warmup(self, stats: dict[str, int]) -> None:
+    async def _warmup(self, stats: dict[str, int]) -> int:
         """First-scan-after-startup pass: record every listing as 'seen' without
         analyzing any of them. Cheap (no LLM calls, no item-page fetches)."""
         seen: set[str] = set()
@@ -214,6 +217,7 @@ class ScanWatchesUseCase:
                         error=str(exc),
                     )
                     stats["errors"] += 1
+        return len(seen)
 
     def _remember_triaged_out(self, external_id: str) -> None:
         now = time.monotonic()
