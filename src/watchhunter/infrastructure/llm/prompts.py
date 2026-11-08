@@ -33,11 +33,20 @@ WHAT YOU ARE HUNTING FOR (high scores 70-100)
 • National (Panasonic) LCD watches, Soviet Electronika 1, 5, 53 series
 • Sinclair Black Watch, Compu-Chron, Litronix LED
 • Rare Japanese LCD module curiosities, NOS-in-box examples
-• Tool watches by Sicura, Sandoz, Heuer chronograph if seriously underpriced
+• Ana-digi hybrids count as digital (Seiko H558/H601, Casio AQ/AB/AX, Citizen
+  ana-digi), as do calculator, game, databank, telememo, melody, thermometer,
+  TV and remote-control watches.
+• Cheap non-working or "für Bastler" vintage digital pieces of an interesting
+  reference ARE interesting: modules, cases and bezels are what restorers buy.
 
 ═══════════════════════════════════════════════════════════════════════════
 WHAT YOU AGGRESSIVELY DOWNRANK (score ≤ 25, recommendation = "skip")
 ═══════════════════════════════════════════════════════════════════════════
+
+• ANY PURELY ANALOG WATCH, mechanical or quartz, however rare or valuable:
+  Seiko 5, King/Grand Seiko, chronographs (6139, 7T32...), divers (6309, 7C46),
+  Citizen Bullhead, dress watches, Swiss mechanics. This collector only wants
+  digital (LCD/LED) and ana-digi watches. Score ≤ 20, recommendation "skip".
 
 • ANY smartwatch: Apple Watch (Series, Ultra, SE), Samsung Galaxy Watch,
   Garmin, Fitbit, Wear OS — these are NOT collectible. Score ≤ 15.
@@ -74,9 +83,10 @@ EVALUATION RULES
    prices). Vintage digitals often sell for €60-300 for good examples,
    €500+ for grails like Casio AX-210 in box, €1000+ for Pulsar P1/P2.
 4. Profit = estimated_market_value_eur - current_price_eur.
-   The score is about the absolute opportunity, not the percentage: a €10
-   watch worth €25 is not a find. Profit under €30 → score ≤ 55; a seller's
-   "80s"/"vintage" claim without photo evidence does not count as proof.
+   The score is how much a vintage-digital collector would want THIS piece at
+   THIS price: the reference and its originality matter most; profit is
+   secondary. A cheap interesting reference is a find even with small profit.
+   A seller's "80s"/"vintage" claim without photo evidence is not proof.
 5. Set "interesting=true" ONLY if score ≥ 60 AND it's a collectible digital
    or rare vintage tool watch.
 6. Recommendation:
@@ -222,6 +232,8 @@ Mark `interesting=true` ONLY if the title/description suggests one of:
   • Anything explicitly described as 70s/80s/90s digital, LCD vintage, or LED
 
 Mark `interesting=false` for:
+  • Any purely analog watch (mechanical or quartz hands only): Seiko 5,
+    chronographs, divers, dress watches, Citizen Bullhead, Swiss mechanics
   • Apple Watch, Samsung Galaxy Watch, Garmin, Fitbit, Wear OS smartwatches
   • Modern Swatch (post-1995) unless titled as Vivienne Westwood collab,
     MoonSwatch first wave, Pop Art numbered

@@ -178,6 +178,9 @@ def _group_keywords(keywords: list[str]) -> list[str]:
     call per keyword against the 5000 calls/day quota. Multi-word phrases are
     not ORed reliably by eBay, so each stays its own query.
     """
+    # "|" inside a keyword is an OR list (commas would split the .env CSV):
+    # "casio (lcd|digital)" -> "casio (lcd, digital)" = casio AND (lcd OR digital).
+    keywords = [k.replace("|", ", ") for k in keywords]
     words = [k.strip() for k in keywords if k.strip() and " " not in k.strip()]
     phrases = [k.strip() for k in keywords if " " in k.strip()]
     grouped: list[str] = []
