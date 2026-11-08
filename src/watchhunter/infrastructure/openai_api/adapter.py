@@ -25,6 +25,8 @@ from watchhunter.domain.models import Listing
 from watchhunter.infrastructure.http.client import HttpClient
 from watchhunter.infrastructure.llm.prompts import (
     RESPONSE_SCHEMA,
+    SCREEN_SCHEMA,
+    SCREEN_SUFFIX,
     SYSTEM_INSTRUCTION,
     TRIAGE_BATCH_SCHEMA,
     TRIAGE_INSTRUCTION,
@@ -51,6 +53,8 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
         max_images: int = 4,
         image_detail: str = "low",
         triage_batch_size: int = 25,
+        screen_model: str = "",
+        screen_pass_score: int = 50,
     ) -> None:
         self._client = client
         self._http = http
@@ -60,6 +64,10 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
         self._max_images = max_images
         self._image_detail = image_detail
         self._batch_size = max(1, triage_batch_size)
+        # Cascade: a cheap vision model screens first; only listings it scores
+        # >= screen_pass_score (and doesn't skip) get the full evaluation.
+        self._screen_model = screen_model
+        self._screen_pass = screen_pass_score
 
     # ─── triage: one listing ─────────────────────────────────────────────
     async def triage(self, listing: Listing) -> TriageResult:
@@ -147,21 +155,40 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
             has_images=bool(urls),
         )
 
+        if self._screen_model:
+            screen = await self._with_image_fallback(
+                lambda u: self._evaluate_call(text, u, screen=True), urls
+            )
+            score = int(screen.get("score") or 0)
+            if screen.get("recommendation") == "skip" or score < self._screen_pass:
+                log.info(
+                    "eval.screened_out",
+                    score=score,
+                    brand=screen.get("brand"),
+                    model=screen.get("model"),
+                )
+                return _from_screen(screen, listing)
+
+        raw = await self._with_image_fallback(lambda u: self._evaluate_call(text, u), urls)
+        return _to_evaluation(raw)
+
+    async def _with_image_fallback(self, call: Any, urls: list[str]) -> dict[str, Any]:
         # Fast path: hand OpenAI the public image URLs, no download on our side.
         try:
-            raw = await self._evaluate_call(text, urls)
+            return await call(urls)  # type: ignore[no-any-return]
         except openai.BadRequestError as exc:
             # Usually an image URL OpenAI could not fetch (hotlink block, 404).
             # Retry once with the images we can download ourselves.
             log.info("eval.url_images_rejected", error=str(exc)[:200])
             data_urls = await self._download_as_data_urls(urls)
             try:
-                raw = await self._evaluate_call(text, data_urls)
+                return await call(data_urls)  # type: ignore[no-any-return]
             except openai.OpenAIError as exc2:
                 raise AnalyzerError(f"OpenAI evaluation failed: {exc2}") from exc2
-        return _to_evaluation(raw)
 
-    async def _evaluate_call(self, text: str, image_urls: list[str]) -> dict[str, Any]:
+    async def _evaluate_call(
+        self, text: str, image_urls: list[str], *, screen: bool = False
+    ) -> dict[str, Any]:
         content: list[dict[str, Any]] = [{"type": "text", "text": text}]
         content += [
             {"type": "image_url", "image_url": {"url": u, "detail": self._image_detail}}
@@ -169,10 +196,12 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
         ]
         async with self._rate:
             return await self._client.generate_json(
-                system_instruction=SYSTEM_INSTRUCTION,
+                system_instruction=SYSTEM_INSTRUCTION + (SCREEN_SUFFIX if screen else ""),
                 user_content=content,
-                schema_name="watch_evaluation",
-                response_schema=RESPONSE_SCHEMA,
+                schema_name="watch_screen" if screen else "watch_evaluation",
+                response_schema=SCREEN_SCHEMA if screen else RESPONSE_SCHEMA,
+                model=self._screen_model if screen else None,
+                est_output_tokens=120 if screen else 600,
                 image_count=len(image_urls),
                 image_detail=self._image_detail,
             )
@@ -216,3 +245,27 @@ def _to_evaluation(raw: dict[str, Any]) -> WatchEvaluation:
     except (KeyError, ValueError) as exc:
         raise AnalyzerError(f"Malformed evaluation: {exc}") from exc
 
+
+
+def _from_screen(raw: dict[str, Any], listing: Listing) -> WatchEvaluation:
+    """A screened-out listing as a (rejected) evaluation, so it is stored and skipped."""
+    try:
+        value = Decimal(str(raw.get("estimated_market_value_eur") or 0))
+        return WatchEvaluation(
+            interesting=False,
+            score=max(0, min(100, int(raw.get("score") or 0))),
+            brand=str(raw.get("brand") or "Unknown"),
+            model=str(raw.get("model") or "Unknown"),
+            confidence=0,
+            estimated_market_value_eur=value,
+            current_price_eur=listing.current_price_eur,
+            potential_profit_eur=value - listing.current_price_eur,
+            rarity=RarityLevel.LOW,
+            condition="",
+            fake_risk=FakeRisk(str(raw.get("fake_risk") or "medium").lower()),
+            recommendation=Recommendation.SKIP,
+            reasoning=f"screen: {raw.get('reasoning') or ''}",
+            raw_response={"screen": raw},
+        )
+    except (KeyError, ValueError) as exc:
+        raise AnalyzerError(f"Malformed screen result: {exc}") from exc

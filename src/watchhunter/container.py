@@ -265,6 +265,8 @@ def _build_analyzer(
         max_images=settings.max_images_per_listing,
         image_detail=settings.openai_image_detail,
         triage_batch_size=settings.triage_batch_size,
+        screen_model=settings.openai_screen_model,
+        screen_pass_score=max(0, settings.min_score - settings.screen_margin),
     )
     if settings.triage_provider.lower().strip() != "jev":
         return openai_analyzer

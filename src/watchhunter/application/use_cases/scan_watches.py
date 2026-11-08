@@ -299,10 +299,12 @@ class ScanWatchesUseCase:
                     # Rejected evaluations aren't stored, so remember the
                     # verdict in memory: no new photo evaluation every scan.
                     self._remember_triaged_out(listing.external_id)
-                    # In fresh-only mode, record the listing so we never
-                    # re-analyze it on the next scan.
-                    if self._only_new:
-                        await self._repo.upsert_listing(listing)
+                    # Store the rejection too: get_recent_evaluation then skips
+                    # it for the re-analysis window even across restarts. The
+                    # notify backstop uses the same score/recommendation gate,
+                    # so a stored rejection is never sent.
+                    rejected_id = await self._repo.upsert_listing(listing)
+                    await self._repo.save_evaluation(rejected_id, evaluation)
                     return
 
                 listing_id = await self._repo.upsert_listing(listing)

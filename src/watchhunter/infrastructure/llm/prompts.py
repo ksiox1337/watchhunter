@@ -290,3 +290,35 @@ def build_user_prompt(
         f"{image_note}"
         "Return ONLY the JSON object — no commentary."
     )
+
+
+# ─── Screening (cheap vision pass before the full evaluation) ─────────────
+# Same expert system prompt; this suffix asks for the verdict only, in a few
+# English words, so the call costs ~100 output tokens instead of ~600.
+SCREEN_SUFFIX = (
+    "\n\nSCREENING PASS: return ONLY the verdict fields of the schema. "
+    "reasoning = at most 15 English words. Be strict: most listings are skips."
+)
+
+SCREEN_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "score": {"type": "integer"},
+        "brand": {"type": "string"},
+        "model": {"type": "string"},
+        "estimated_market_value_eur": {"type": "number"},
+        "fake_risk": {"type": "string", "enum": ["low", "medium", "high"]},
+        "recommendation": {"type": "string", "enum": ["buy", "watch", "skip"]},
+        "reasoning": {"type": "string"},
+    },
+    "required": [
+        "score",
+        "brand",
+        "model",
+        "estimated_market_value_eur",
+        "fake_risk",
+        "recommendation",
+        "reasoning",
+    ],
+}
