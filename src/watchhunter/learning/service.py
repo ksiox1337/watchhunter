@@ -61,8 +61,12 @@ class TasteService:
             await self._report(  # type: ignore[operator]
                 "<b>🎓 Модель вкуса дообучилась</b>\n"
                 f"Оценок: {model.n}, из них «те самые»: {model.positives}\n"
+                f"Модель: {model.kind} (AUC: "
+                + ", ".join(f"{k} {v:.2f}" for k, v in (model.candidates or {}).items())
+                + ")\n"
                 f"Качество (AUC): {model.auc:.2f}{change}\n"
                 f"При пороге {round(self.threshold * 100)}%: из присланного понравилось бы {prec:.0%}, "
                 f"находится {int(y[sel].sum())} из {int(y.sum())}\n"
-                f"Тянет к: {', '.join(likes)}\nОтталкивает: {', '.join(dislikes)}"
+                f"Тянет к: {', '.join(likes)}"
+                + (f"\nОтталкивает: {', '.join(dislikes)}" if dislikes else "")
             )

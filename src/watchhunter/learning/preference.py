@@ -21,6 +21,7 @@ from typing import Any
 import joblib
 import numpy as np
 from scipy.sparse import csr_matrix, hstack
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
@@ -64,10 +65,12 @@ def featurize(listing: Listing, ev: WatchEvaluation) -> tuple[str, list[float]]:
 class PreferenceModel:
     words: TfidfVectorizer
     chars: TfidfVectorizer
-    clf: LogisticRegression
+    clf: Any  # LogisticRegression or RandomForestClassifier
     n: int
     positives: int
     auc: float | None
+    kind: str = "logreg"
+    candidates: dict[str, float] | None = None
 
     def _x(self, texts: list[str], numeric: list[list[float]]) -> Any:
         return hstack(
@@ -80,20 +83,31 @@ class PreferenceModel:
 
     def top_terms(self, k: int = 8) -> tuple[list[str], list[str]]:
         names = list(self.words.get_feature_names_out())
+        if not hasattr(self.clf, "coef_"):  # forest: importance has no direction
+            imp = self.clf.feature_importances_[: len(names)]
+            return [names[i] for i in np.argsort(imp)[::-1][:k]], []
         coefs = self.clf.coef_[0][: len(names)]
         order = np.argsort(coefs)
         return [names[i] for i in order[::-1][:k]], [names[i] for i in order[:k]]
 
 
-def _fit(samples: list[Sample]) -> PreferenceModel:
+MODELS = {
+    "logreg": lambda: LogisticRegression(C=0.7, class_weight="balanced", max_iter=2000),
+    "random_forest": lambda: RandomForestClassifier(
+        n_estimators=500, min_samples_leaf=2, class_weight="balanced_subsample",
+        n_jobs=-1, random_state=0,
+    ),
+}
+
+
+def _fit(samples: list[Sample], kind: str = "logreg") -> PreferenceModel:
     texts = [s.text for s in samples]
     y = np.array([s.label for s in samples])
     words = TfidfVectorizer(ngram_range=(1, 2), min_df=2, sublinear_tf=True)
     chars = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 4), min_df=3, max_features=3000)
     words.fit(texts)
     chars.fit(texts)
-    m = PreferenceModel(words, chars, LogisticRegression(C=0.7, class_weight="balanced", max_iter=2000),
-                        len(samples), int(y.sum()), None)
+    m = PreferenceModel(words, chars, MODELS[kind](), len(samples), int(y.sum()), None, kind)
     m.clf.fit(m._x(texts, [s.numeric for s in samples]), y)
     return m
 
@@ -119,20 +133,30 @@ async def load_samples(db: Database) -> list[Sample]:
     return out
 
 
-def train(samples: list[Sample]) -> PreferenceModel | None:
+def _cv(samples: list[Sample], kind: str) -> np.ndarray:
     y = [s.label for s in samples]
-    if len(samples) < MIN_LABELS or sum(y) < MIN_POSITIVES:
-        return None
-    # Honest quality number: cross-validated AUC on held-out folds.
     folds = min(5, sum(y), len(y) - sum(y))
     preds = np.zeros(len(samples))
     for tr, te in StratifiedKFold(folds, shuffle=True, random_state=0).split(np.zeros(len(y)), y):
-        m = _fit([samples[i] for i in tr])
-        for i in te:
-            preds[i] = m.clf.predict_proba(m._x([samples[i].text], [samples[i].numeric]))[0, 1]
-    model = _fit(samples)
-    model.auc = float(roc_auc_score(y, preds))
-    model.cv_preds = preds  # type: ignore[attr-defined]
+        m = _fit([samples[i] for i in tr], kind)
+        x = m._x([samples[i].text for i in te], [samples[i].numeric for i in te])
+        preds[te] = m.clf.predict_proba(x)[:, 1]
+    return preds
+
+
+def train(samples: list[Sample]) -> PreferenceModel | None:
+    """Cross-validate every candidate, keep the one with the best held-out AUC."""
+    y = [s.label for s in samples]
+    if len(samples) < MIN_LABELS or sum(y) < MIN_POSITIVES:
+        return None
+    scores: dict[str, tuple[float, np.ndarray]] = {}
+    for kind in MODELS:
+        preds = _cv(samples, kind)
+        scores[kind] = (float(roc_auc_score(y, preds)), preds)
+    best = max(scores, key=lambda k: scores[k][0])
+    model = _fit(samples, best)
+    model.auc, model.cv_preds = scores[best]  # type: ignore[attr-defined]
+    model.candidates = {k: round(v[0], 3) for k, v in scores.items()}
     return model
 
 

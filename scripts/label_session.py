@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import random
 import sys
+from decimal import Decimal
 
 from watchhunter.application.ports.marketplace import MarketplaceQuery
 from watchhunter.application.ports.notifier import NotificationPayload
@@ -24,7 +25,8 @@ from watchhunter.config.settings import Settings
 from watchhunter.container import build_container
 from watchhunter.domain.models import BuyingOption, Listing, Marketplace
 
-PRICE_BUCKETS = [(0, 30), (30, 80), (80, 200), (200, 600), (600, 100_000)]
+PRICE_BUCKETS = [(0, 20), (20, 40), (40, 70), (70, 200), (200, 100_000)]
+MAX_PRICE = Decimal("70")  # same cap as the live bot (MAX_TOTAL_EUR)
 
 
 async def gather_pool(c, s: Settings) -> list[Listing]:
@@ -39,12 +41,25 @@ async def gather_pool(c, s: Settings) -> list[Listing]:
                 q = MarketplaceQuery(
                     marketplace=Marketplace(market), category_id=cat, keywords=keywords,
                     ends_within_hours=s.auction_ends_within_hours, only_with_bids=False,
-                    max_price_eur=None, buying_option=option, max_pages=pages,
+                    max_price_eur=MAX_PRICE, buying_option=option, max_pages=pages,
                 )
                 async for lst in c.marketplace.search_auctions(q):
                     if lst.image_urls and lst.hours_until_end > 0.2:
                         pool.setdefault(lst.external_id, lst)
     return list(pool.values())
+
+
+async def gather_kleinanzeigen(c, s: Settings, pages: int = 2) -> list[Listing]:
+    from watchhunter.infrastructure.kleinanzeigen.adapter import KleinanzeigenMarketplaceAdapter
+    from watchhunter.infrastructure.ratelimit.limiter import RateLimiter
+
+    ka = KleinanzeigenMarketplaceAdapter(http=c.http, rate_limiter=RateLimiter(rate_per_minute=8))
+    q = MarketplaceQuery(
+        marketplace=Marketplace.KLEINANZEIGEN, category_id=None, keywords=s.kleinanzeigen_keywords,
+        ends_within_hours=24, only_with_bids=False, max_price_eur=MAX_PRICE,
+        buying_option=BuyingOption.FIXED_PRICE, max_pages=pages,
+    )
+    return [lst async for lst in ka.search_auctions(q) if lst.image_urls]
 
 
 def pick(pool: list[Listing], n: int) -> list[Listing]:
@@ -53,7 +68,7 @@ def pick(pool: list[Listing], n: int) -> list[Listing]:
     cells: dict[tuple[int, str], list[Listing]] = {}
     for lst in pool:
         b = next(i for i, (lo, hi) in enumerate(PRICE_BUCKETS) if lo <= lst.current_price_eur < hi)
-        cells.setdefault((b, lst.buying_option.value), []).append(lst)
+        cells.setdefault((b, lst.marketplace.value), []).append(lst)
     for v in cells.values():
         rng.shuffle(v)
     out: list[Listing] = []
@@ -69,7 +84,10 @@ async def main(n: int) -> None:
     s = Settings()
     c = await build_container(s)
     try:
-        pool = await gather_pool(c, s)
+        ebay = await gather_pool(c, s)
+        ka = await gather_kleinanzeigen(c, s)
+        print(f"eBay {len(ebay)}, Kleinanzeigen {len(ka)}")
+        pool = ebay + ka
         # Never ask twice: skip anything already sent (rated sessions, finds).
         pool = [x for x in pool if not await c.repository.was_ever_notified(x.external_id)]
         chosen = pick(pool, n)
