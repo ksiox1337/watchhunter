@@ -111,7 +111,9 @@ class Scheduler:
                 max_instances=1,
                 coalesce=True,
                 replace_existing=True,
-                next_run_time=_now_plus_seconds(20),
+                # Short jobs start right away; hourly-plus jobs (taste retrain)
+                # wait one interval, so restarts don't redo them.
+                next_run_time=_now_plus_seconds(20 if seconds < 3600 else seconds),
             )
 
         self._scheduler.start()
