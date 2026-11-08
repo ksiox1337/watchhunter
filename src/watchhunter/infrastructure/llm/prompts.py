@@ -47,8 +47,16 @@ WHAT YOU AGGRESSIVELY DOWNRANK (score ≤ 25, recommendation = "skip")
 • Modern fashion/quartz: Fossil, Diesel, Michael Kors, Guess, Boss,
   Tommy Hilfiger, Armani Exchange, TW Steel, Daniel Wellington,
   ChocoMoon, Cluse, MVMT. Score ≤ 20.
-• Modern Casio re-issues at ordinary prices (current-production F-91W,
-  A158WA, AE-1200 sold at €30+ — these are still in production).
+• CURRENT-PRODUCTION CASIO (still sold new for €20-60), e.g. F-91W, F-105,
+  F-201, W-59, A158W/A158WA, A159W, A163W, A164W, A168W/A168WA, A171W,
+  A178W, A700W, LA670/LA680, B640, CA-53W, DBC-32/DBC-611 current models,
+  AE-1200/AE-1300, AQ-230A, AQ-S810, MQ-24, DW-5600E/DW-5600BB, GA-2100,
+  G-Shock / Baby-G current lines, Casio Collection "Retro/Vintage" re-editions
+  (the word "vintage" in the title or on the dial does NOT make them vintage).
+  Default: score ≤ 40, rarity "low", recommendation "skip" — unless the photos
+  clearly prove an original 1970s-90s piece (Japan-made case back, old module
+  number, period box/papers) AND the price is below what such originals sell
+  for. Lots of several such watches are judged by their best piece.
 • Quartz analog watches with no collector following.
 • Watches with obvious replacement bands sold as "complete original".
 • Broken/non-working unless explicitly stated AND very cheap parts watch.
@@ -66,6 +74,9 @@ EVALUATION RULES
    prices). Vintage digitals often sell for €60-300 for good examples,
    €500+ for grails like Casio AX-210 in box, €1000+ for Pulsar P1/P2.
 4. Profit = estimated_market_value_eur - current_price_eur.
+   The score is about the absolute opportunity, not the percentage: a €10
+   watch worth €25 is not a find. Profit under €30 → score ≤ 55; a seller's
+   "80s"/"vintage" claim without photo evidence does not count as proof.
 5. Set "interesting=true" ONLY if score ≥ 60 AND it's a collectible digital
    or rare vintage tool watch.
 6. Recommendation:
@@ -212,7 +223,9 @@ Mark `interesting=false` for:
     MoonSwatch first wave, Pop Art numbered
   • Modern fashion: Fossil, Diesel, Michael Kors, Guess, Boss, Tommy Hilfiger,
     Armani, TW Steel, Daniel Wellington, ChocoMoon, Cluse, MVMT
-  • Current-production Casios at ordinary prices (F-91W, A158WA, AE-1200 at €30+)
+  • Current-production Casio/G-Shock bought new for €20-60 (F-91W, A158W,
+    A168W, A163W, A164W, CA-53W, AE-1200, AQ-230A, LA680, DW-5600, GA-2100),
+    even when the title says "vintage" or "retro"
   • Generic quartz analogs, no collector following
   • Anything you cannot brand-identify from the title
   • Children's, replica, or no-name "Lederuhr"/"Designer" listings
