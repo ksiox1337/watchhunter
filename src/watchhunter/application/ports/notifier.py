@@ -13,6 +13,7 @@ from watchhunter.domain.models import Listing
 class NotificationPayload:
     listing: Listing
     evaluation: WatchEvaluation
+    evaluation_id: int | None = None  # lets the card carry feedback buttons
 
 
 class NotifierPort(ABC):

@@ -36,6 +36,8 @@ from watchhunter.infrastructure.llm.prompts import (
     TRIAGE_SCHEMA,
     VERDICT_SCHEMA,
     VERDICT_SUFFIX,
+    WEB_CHECK_INSTRUCTIONS,
+    WEB_CHECK_SCHEMA,
     build_card_prompt,
     build_triage_batch_prompt,
     build_triage_prompt,
@@ -62,6 +64,10 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
         screen_model: str = "",
         screen_pass_score: int = 50,
         card_min_score: int | None = None,
+        card_min_profit: float = 0.0,
+        web_searcher: Any = None,
+        comps: Any = None,
+        calibration: Any = None,
     ) -> None:
         self._client = client
         self._http = http
@@ -79,6 +85,12 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
         # only when the verdict could be sent (score >= card_min_score, not
         # skip). None = one combined call (old behaviour).
         self._card_min = card_min_score
+        self._card_min_profit = card_min_profit  # no card/web check below this profit
+        # Evidence for finds: web check of sold prices, our own sale history.
+        self._web = web_searcher
+        self._comps = comps  # async (brand, model) -> SaleStats | None
+        # async () -> str: how far past estimates were from real final prices.
+        self._calibration = calibration
 
     # ─── triage: one listing ─────────────────────────────────────────────
     async def triage(self, listing: Listing) -> TriageResult:
@@ -180,6 +192,14 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
                 )
                 return _from_screen(screen, listing)
 
+        if self._calibration is not None:
+            try:
+                note = await self._calibration()
+            except Exception:
+                note = ""
+            if note:
+                text = f"{text}\n\n{note}"
+
         if self._card_min is None:
             raw = await self._with_image_fallback(
                 lambda u: self._evaluate_call(text, u, mode="full"), urls
@@ -190,7 +210,16 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
             lambda u: self._evaluate_call(text, u, mode="verdict"), urls
         )
         score = int(verdict.get("score") or 0)
-        if verdict.get("recommendation") != "skip" and score >= self._card_min:
+        profit = float(verdict.get("estimated_market_value_eur") or 0) - float(
+            listing.current_price_eur
+        )
+        if (
+            verdict.get("recommendation") != "skip"
+            and score >= self._card_min
+            and profit >= self._card_min_profit
+        ):
+            evidence = await self._evidence(verdict)
+            verdict = {**verdict, **evidence}
             card_text = build_card_prompt(text, json.dumps(verdict, ensure_ascii=False))
             try:
                 card = await self._with_image_fallback(
@@ -201,6 +230,49 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
                 # The find still goes out, just with a plainer card.
                 log.warning("eval.card_failed", error=str(exc)[:200])
         return _to_evaluation(verdict)
+
+    async def _evidence(self, verdict: dict[str, Any]) -> dict[str, Any]:
+        """Web sold-price check + own sale stats, in parallel; failures are skipped."""
+        brand, model = str(verdict.get("brand") or ""), str(verdict.get("model") or "")
+
+        async def web() -> dict[str, Any] | None:
+            if not self._web or not brand or model.lower().startswith("unknown"):
+                return None
+            try:
+                return await self._web.search_json(  # type: ignore[no-any-return]
+                    instructions=WEB_CHECK_INSTRUCTIONS,
+                    query=f"{brand} {model} watch — recent sold prices",
+                    schema_name="web_check",
+                    schema=WEB_CHECK_SCHEMA,
+                )
+            except Exception as exc:
+                log.warning("eval.web_check_failed", error=str(exc)[:160])
+                return None
+
+        async def sales() -> dict[str, Any] | None:
+            if not self._comps:
+                return None
+            try:
+                st = await self._comps(brand, model)
+            except Exception as exc:
+                log.warning("eval.sales_failed", error=str(exc)[:160])
+                return None
+            if st is None:
+                return None
+            return {
+                "sold": st.sold, "unsold": st.unsold, "days": st.days,
+                "low": str(st.low) if st.low is not None else None,
+                "median": str(st.median) if st.median is not None else None,
+                "high": str(st.high) if st.high is not None else None,
+            }
+
+        w, s = await asyncio.gather(web(), sales())
+        out: dict[str, Any] = {}
+        if w:
+            out["web_check"] = w
+        if s:
+            out["sales"] = s
+        return out
 
     async def _with_image_fallback(self, call: Any, urls: list[str]) -> dict[str, Any]:
         # Fast path: hand OpenAI the public image URLs, no download on our side.

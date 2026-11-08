@@ -7,6 +7,7 @@ constructor wiring — no framework. Swap an adapter by editing one method.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from watchhunter.application.ports.analyzer import AnalyzerPort
 from watchhunter.application.ports.marketplace import MarketplacePort
@@ -20,17 +21,20 @@ from watchhunter.application.use_cases.scan_watches import ScanWatchesUseCase
 from watchhunter.config.logging import get_logger
 from watchhunter.config.settings import Settings
 from watchhunter.costs.budget import BudgetGuard
-from watchhunter.domain.models import BuyingOption, Marketplace
+from watchhunter.domain.evaluation import WatchEvaluation
+from watchhunter.domain.models import BuyingOption, Listing, Marketplace
+from watchhunter.domain.reference import reference_key
 from watchhunter.infrastructure.ebay.adapter import EbayApiMarketplaceAdapter
 from watchhunter.infrastructure.ebay.client import EbayBrowseClient
 from watchhunter.infrastructure.ebay.html_adapter import EbayHtmlMarketplaceAdapter
 from watchhunter.infrastructure.http.client import HttpClient
+from watchhunter.infrastructure.images.phash import PhotoIndex
 from watchhunter.infrastructure.jev.adapter import JevTriageAnalyzer
 from watchhunter.infrastructure.kleinanzeigen.adapter import (
     KleinanzeigenMarketplaceAdapter,
 )
 from watchhunter.infrastructure.openai_api.adapter import OpenAIAnalyzerAdapter
-from watchhunter.infrastructure.openai_api.client import OpenAIClient
+from watchhunter.infrastructure.openai_api.client import OpenAIClient, WebSearcher
 from watchhunter.infrastructure.persistence.database import Database
 from watchhunter.infrastructure.persistence.repository import SqlAlchemyListingRepository
 from watchhunter.infrastructure.persistence.usage_repository import (
@@ -39,6 +43,9 @@ from watchhunter.infrastructure.persistence.usage_repository import (
 from watchhunter.infrastructure.ratelimit.limiter import RateLimiter
 from watchhunter.infrastructure.telegram.adapter import TelegramNotifierAdapter
 from watchhunter.infrastructure.telegram.client import TelegramBotClient
+from watchhunter.infrastructure.telegram.updates import TelegramUpdates
+from watchhunter.sales.repository import SalesRepository, SaleStats
+from watchhunter.sales.tracker import SalesTracker
 from watchhunter.scheduler.scheduler import Scheduler
 
 log = get_logger(__name__)
@@ -86,8 +93,51 @@ async def build_container(settings: Settings) -> Container:
     )
 
     marketplace = _build_marketplace(settings, http)
-    analyzer = _build_analyzer(settings, http, budget)
-    notifier = _build_notifier(settings, http)
+    sales_repo = SalesRepository(database)
+    photos = PhotoIndex(database=database, http=http)
+
+    async def comps(brand: str, model: str) -> SaleStats | None:
+        return await sales_repo.stats(reference_key(brand, model))
+
+    async def calibration() -> str:
+        """Tell the evaluator how its value estimates compared with real hammer prices."""
+        got = await sales_repo.overestimate()
+        if got is None:
+            return ""
+        n, ratio = got
+        if 0.8 <= ratio <= 1.25:
+            return ""
+        direction = "above" if ratio > 1 else "below"
+        return (
+            f"CALIBRATION from our records: on the last {n} auctions you evaluated, your "
+            f"estimated_market_value_eur was a median {ratio:.1f}x {direction} the real final "
+            "price. Estimate what this item will realistically sell for at auction now, "
+            "not dealer or best-case prices; judge profit and score on that."
+        )
+
+    analyzer = _build_analyzer(settings, http, budget, comps=comps, calibration=calibration)
+    telegram = TelegramBotClient(
+        bot_token=settings.telegram_bot_token, chat_id=settings.telegram_chat_id, http=http
+    )
+    notifier: NotifierPort = TelegramNotifierAdapter(client=telegram, timezone=settings.timezone)
+
+    async def on_evaluated(listing: Listing, ev: WatchEvaluation) -> WatchEvaluation:
+        """After every evaluation: follow the auction to its end; check the photo."""
+        await sales_repo.track(listing, ev)
+        if listing.image_urls:
+            match = await photos.check_and_add(
+                external_id=listing.external_id,
+                image_url=str(listing.image_urls[0]),
+                listing_url=str(listing.url),
+            )
+            if match is not None:
+                raw = {**ev.raw_response, "photo_match": {
+                    "external_id": match.external_id,
+                    "listing_url": match.listing_url,
+                    "distance": match.distance,
+                }}
+                ev = ev.model_copy(update={"photo_seen_url": match.listing_url, "raw_response": raw})
+        return ev
 
     listing_filter = ListingFilter(
         ends_within_hours=settings.auction_ends_within_hours,
@@ -95,7 +145,9 @@ async def build_container(settings: Settings) -> Container:
         max_shipping_eur=settings.max_shipping_eur,
     )
     deal_evaluator = DealEvaluator(
-        min_score=settings.min_score, min_rarity=settings.min_rarity
+        min_score=settings.min_score,
+        min_rarity=settings.min_rarity,
+        min_profit_eur=settings.min_profit_eur or None,
     )
     promising_notifier = PromisingNotifier(
         notifier=notifier,
@@ -122,6 +174,7 @@ async def build_container(settings: Settings) -> Container:
         max_price_eur=settings.max_price_eur,
         gallery_max_images=settings.max_images_per_listing,
         concurrency=settings.eval_concurrency,
+        on_evaluated=on_evaluated,
     )
     notify_uc = NotifyPromisingUseCase(
         repository=repository,
@@ -160,6 +213,7 @@ async def build_container(settings: Settings) -> Container:
             max_price_eur=settings.max_price_eur,
             gallery_max_images=settings.max_images_per_listing,
         concurrency=settings.eval_concurrency,
+        on_evaluated=on_evaluated,
             buying_option=BuyingOption.FIXED_PRICE,
             only_new=True,
             max_pages_per_query=settings.kleinanzeigen_pages_per_query,
@@ -183,6 +237,7 @@ async def build_container(settings: Settings) -> Container:
             max_price_eur=settings.max_price_eur,
             gallery_max_images=settings.max_images_per_listing,
         concurrency=settings.eval_concurrency,
+        on_evaluated=on_evaluated,
             buying_option=BuyingOption.FIXED_PRICE,
             only_new=True,
             max_pages_per_query=settings.buy_now_html_pages_per_query,
@@ -199,6 +254,10 @@ async def build_container(settings: Settings) -> Container:
         buy_now_interval_seconds=settings.buy_now_scan_interval_seconds,
         kleinanzeigen_use_case=kleinanzeigen_uc,
         kleinanzeigen_interval_seconds=settings.kleinanzeigen_scan_interval_seconds,
+        extra_jobs=[
+            ("sales_tracker", SalesTracker(repository=sales_repo, marketplace=marketplace).execute, 180),
+            ("telegram_updates", TelegramUpdates(client=telegram, database=database).execute, 3),
+        ],
     )
 
     return Container(
@@ -241,7 +300,12 @@ def _build_marketplace(settings: Settings, http: HttpClient) -> MarketplacePort:
 
 
 def _build_analyzer(
-    settings: Settings, http: HttpClient, budget: BudgetGuard
+    settings: Settings,
+    http: HttpClient,
+    budget: BudgetGuard,
+    *,
+    comps: Any = None,
+    calibration: Any = None,
 ) -> AnalyzerPort:
     log.info(
         "container.analyzer",
@@ -271,6 +335,19 @@ def _build_analyzer(
         screen_model=settings.openai_screen_model,
         screen_pass_score=max(0, settings.min_score - settings.screen_margin),
         card_min_score=settings.min_score if settings.two_step_eval else None,
+        card_min_profit=float(settings.min_profit_eur or 0),
+        web_searcher=(
+            WebSearcher(
+                api_key=settings.openai_api_key,
+                model=settings.openai_model,
+                base_url=settings.openai_base_url or None,
+                budget=budget,
+            )
+            if settings.web_check_finds
+            else None
+        ),
+        comps=comps,
+        calibration=calibration,
     )
     if settings.triage_provider.lower().strip() != "jev":
         return openai_analyzer
@@ -290,12 +367,3 @@ def _build_analyzer(
         batch_size=settings.triage_batch_size,
         budget=budget,
     )
-
-
-def _build_notifier(settings: Settings, http: HttpClient) -> NotifierPort:
-    client = TelegramBotClient(
-        bot_token=settings.telegram_bot_token,
-        chat_id=settings.telegram_chat_id,
-        http=http,
-    )
-    return TelegramNotifierAdapter(client=client, timezone=settings.timezone)

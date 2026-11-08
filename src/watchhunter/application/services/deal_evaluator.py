@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from watchhunter.domain.evaluation import RarityLevel, Recommendation, WatchEvaluation
 
 
@@ -15,8 +17,13 @@ class DealEvaluator:
     Score + recommendation are sufficient gates.
     """
 
-    def __init__(self, *, min_score: int, min_rarity: str = "") -> None:
+    def __init__(
+        self, *, min_score: int, min_rarity: str = "", min_profit_eur: Decimal | None = None
+    ) -> None:
         self._min_score = min_score
+        # Hard floor on (estimated value - current price): a €10 watch worth
+        # €35 is not worth a message, whatever the model's score says.
+        self._min_profit = min_profit_eur
         # Optional: only notify references at least this rare (e.g. "medium").
         self._min_rarity = RarityLevel(min_rarity) if min_rarity else None
 
@@ -26,5 +33,9 @@ class DealEvaluator:
         if ev.score < self._min_score:
             return False
         if self._min_rarity is not None and ev.rarity.rank < self._min_rarity.rank:
+            return False
+        if self._min_profit is not None and (
+            ev.estimated_market_value_eur - ev.current_price_eur < self._min_profit
+        ):
             return False
         return True

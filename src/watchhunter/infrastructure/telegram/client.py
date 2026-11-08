@@ -39,7 +39,7 @@ class TelegramBotClient:
         photo_url: str,
         caption: str,
         parse_mode: str = "HTML",
-        button: tuple[str, str] | None = None,
+        keyboard: list[list[dict[str, str]]] | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "chat_id": self._chat_id,
@@ -47,10 +47,8 @@ class TelegramBotClient:
             "caption": caption[:1024],
             "parse_mode": parse_mode,
         }
-        if button:
-            payload["reply_markup"] = {
-                "inline_keyboard": [[{"text": button[0], "url": button[1]}]]
-            }
+        if keyboard:
+            payload["reply_markup"] = {"inline_keyboard": keyboard}
         await self._post("/sendPhoto", payload)
 
     async def send_message(
@@ -59,10 +57,10 @@ class TelegramBotClient:
         text: str,
         parse_mode: str = "HTML",
         preview_url: str | None = None,
-        button: tuple[str, str] | None = None,
+        keyboard: list[list[dict[str, str]]] | None = None,
     ) -> None:
         """Send text. `preview_url` shows that image as a large preview above
-        the text; `button` is an inline (label, url) button under the message."""
+        the text; `keyboard` is an inline keyboard (rows of buttons) under it."""
         payload: dict[str, Any] = {"chat_id": self._chat_id, "text": text[:4096]}
         if parse_mode:
             payload["parse_mode"] = parse_mode
@@ -74,13 +72,34 @@ class TelegramBotClient:
             }
         else:
             payload["link_preview_options"] = {"is_disabled": True}
-        if button:
-            payload["reply_markup"] = {
-                "inline_keyboard": [[{"text": button[0], "url": button[1]}]]
-            }
+        if keyboard:
+            payload["reply_markup"] = {"inline_keyboard": keyboard}
         await self._post("/sendMessage", payload)
 
-    async def _post(self, path: str, payload: dict[str, Any]) -> None:
+    # ─── receiving: buttons and commands ─────────────────────────────────
+    @property
+    def chat_id(self) -> str:
+        return self._chat_id
+
+    async def get_updates(self, offset: int) -> list[dict[str, Any]]:
+        body = await self._post(
+            "/getUpdates",
+            {"offset": offset, "timeout": 0, "allowed_updates": ["message", "callback_query"]},
+        )
+        return list(body.get("result") or [])
+
+    async def answer_callback(self, callback_id: str, text: str) -> None:
+        await self._post("/answerCallbackQuery", {"callback_query_id": callback_id, "text": text})
+
+    async def edit_keyboard(
+        self, *, chat_id: str | int, message_id: int, keyboard: list[list[dict[str, str]]]
+    ) -> None:
+        await self._post(
+            "/editMessageReplyMarkup",
+            {"chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": keyboard}},
+        )
+
+    async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self._base}{path}"
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(3),
@@ -97,3 +116,5 @@ class TelegramBotClient:
                             f"Telegram {path} failed (status {resp.status}): "
                             f"{body.get('description', body)}"
                         )
+                    return body  # type: ignore[no-any-return]
+        return {}

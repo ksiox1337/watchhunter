@@ -68,6 +68,10 @@ def _single_instance(lock_path: Path) -> IO[str]:
 
 
 def main() -> None:
+    if sys.argv[1:2] == ["check"]:
+        from watchhunter.check import main as check
+
+        sys.exit(check())
     _lock = _single_instance(Path("data") / "watchhunter.lock")  # held until exit
     try:
         asyncio.run(_run())

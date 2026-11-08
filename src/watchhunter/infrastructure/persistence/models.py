@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -95,3 +96,53 @@ class GeminiUsageRow(Base):
 
 
 Index("ix_usage_day_model", GeminiUsageRow.created_at, GeminiUsageRow.model)
+
+
+class SaleRow(Base):
+    """Our own sale history: auctions we evaluated, snapshotted until they end.
+
+    The last snapshot before the end is close to the hammer price. Unsold
+    auctions (0 bids at the end) are kept with sold=False.
+    """
+
+    __tablename__ = "sales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    marketplace: Mapped[str] = mapped_column(String(32))
+    ref_key: Mapped[str] = mapped_column(String(64), index=True)
+    brand: Mapped[str] = mapped_column(String(128), default="")
+    model: Mapped[str] = mapped_column(String(256), default="")
+    title: Mapped[str] = mapped_column(String(512), default="")
+    url: Mapped[str] = mapped_column(String(1024), default="")
+    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    estimate_eur: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    last_price_eur: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    bid_count: Mapped[int] = mapped_column(Integer, default=0)
+    snapshot_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    final: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    sold: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ImageHashRow(Base):
+    """Perceptual hash of a listing's first photo, to spot reused photos."""
+
+    __tablename__ = "image_hashes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    url: Mapped[str] = mapped_column(String(1024))
+    listing_url: Mapped[str] = mapped_column(String(1024), default="")
+    phash: Mapped[str] = mapped_column(String(32), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class FeedbackRow(Base):
+    """Your reaction to a sent card (Telegram buttons)."""
+
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    evaluation_id: Mapped[int] = mapped_column(Integer, index=True)
+    action: Mapped[str] = mapped_column(String(16))  # like | dislike | bought
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

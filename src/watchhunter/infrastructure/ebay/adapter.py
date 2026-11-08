@@ -109,7 +109,12 @@ class EbayApiMarketplaceAdapter(MarketplacePort):
                 )
                 break
 
-        return ListingState(price_eur=price, shipping_eur=shipping)
+        bids = data.get("bidCount")
+        return ListingState(
+            price_eur=price,
+            shipping_eur=shipping,
+            bid_count=int(bids) if bids is not None else None,
+        )
 
     async def search_auctions(
         self, query: MarketplaceQuery

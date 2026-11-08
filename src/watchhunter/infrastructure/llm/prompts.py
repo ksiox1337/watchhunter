@@ -393,9 +393,36 @@ VERDICT_SUFFIX = (
 
 CARD_SUFFIX = (
     "\n\nSTEP 2 of 2 — CARD: the verdict is already decided (given below). "
-    "Return ONLY the card fields of the schema, in Russian, consistent with it."
+    "Return ONLY the card fields of the schema, in Russian, consistent with it. "
+    "If the verdict carries web_check (sold prices found online) or sales (our "
+    "own record of how this reference ended at auction), base value_low/high "
+    "and rarity_note on that evidence rather than memory, and mention it."
 )
 
 
 def build_card_prompt(user_prompt: str, verdict_json: str) -> str:
     return f"{user_prompt}\n\nVerdict (step 1): {verdict_json}"
+
+
+# ─── Web check of sold prices (finds only) ───────────────────────────────
+WEB_CHECK_INSTRUCTIONS = (
+    "You check real market prices of one vintage watch reference for a "
+    "collector. Search the web for recently SOLD examples (eBay sold/completed, "
+    "auction results, collector forums, price guides). Ignore asking prices of "
+    "unsold listings when sold data exists. Report in EUR (convert roughly). "
+    "If you find nothing reliable, return zeros and say so. summary_ru: one "
+    "short Russian sentence. sources: up to 3 URLs you actually used."
+)
+
+WEB_CHECK_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "sold_low_eur": {"type": "number"},
+        "sold_high_eur": {"type": "number"},
+        "examples_found": {"type": "integer"},
+        "summary_ru": {"type": "string"},
+        "sources": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["sold_low_eur", "sold_high_eur", "examples_found", "summary_ru", "sources"],
+}

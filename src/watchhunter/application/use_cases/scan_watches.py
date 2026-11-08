@@ -6,6 +6,7 @@ import asyncio
 import time
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
 
 from watchhunter.application.ports.analyzer import AnalyzerPort
 from watchhunter.application.ports.marketplace import (
@@ -58,6 +59,7 @@ class ScanWatchesUseCase:
         only_new: bool = False,
         max_pages_per_query: int | None = None,
         warmup_first_scan: bool = False,
+        on_evaluated: Any = None,
     ) -> None:
         self._marketplace = marketplace
         self._analyzer = analyzer
@@ -79,6 +81,8 @@ class ScanWatchesUseCase:
         # what's already up without analyzing, so only NEW arrivals trigger work.
         self._warmup_pending = warmup_first_scan and only_new
         self._semaphore = asyncio.Semaphore(concurrency)
+        # Hooks run after every evaluation (sale tracking, photo hashes).
+        self._on_evaluated = on_evaluated
         # Titles don't change, so a "not interesting" verdict holds: remember it
         # in memory for the re-analysis window instead of paying triage again on
         # every scan (auctions are re-listed by eBay search every 15 min).
@@ -303,6 +307,11 @@ class ScanWatchesUseCase:
                 # ── Stage 2b: full multimodal evaluation ─────────────────
                 evaluation = await self._analyzer.evaluate(listing)
                 stats["analyzed"] += 1
+                if self._on_evaluated is not None:
+                    try:
+                        evaluation = await self._on_evaluated(listing, evaluation)
+                    except Exception as exc:  # hooks must never cost a find
+                        log.warning("scan.hook_failed", error=str(exc)[:160])
 
                 if not self._evaluator.is_promising(evaluation):
                     log.info(

@@ -148,3 +148,69 @@ class OpenAIClient:
 def _supports_reasoning_effort(model: str) -> bool:
     m = model.lower()
     return m.startswith(("gpt-5", "o1", "o3", "o4")) and "chat" not in m
+
+
+class WebSearcher:
+    """OpenAI Responses API with the web_search tool, strict JSON out.
+
+    Used only for finds (a few per day): ~$0.01 per search call + tokens.
+    """
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        budget: BudgetGuard | None = None,
+        base_url: str | None = None,
+        timeout_s: float = 90.0,
+    ) -> None:
+        self._client = AsyncOpenAI(
+            api_key=api_key, base_url=base_url or None, timeout=timeout_s, max_retries=2
+        )
+        self._model = model
+        self._budget = budget
+
+    async def search_json(
+        self, *, instructions: str, query: str, schema_name: str, schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        if self._budget is not None:
+            await self._budget.check(model="web_search", est_input_tokens=0, est_output_tokens=2)
+        try:
+            resp = await self._client.responses.create(
+                model=self._model,
+                instructions=instructions,
+                input=query,
+                tools=[{"type": "web_search"}],
+                reasoning={"effort": "low"},
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": schema_name,
+                        "schema": schema,
+                        "strict": True,
+                    }
+                },
+            )
+        except openai.OpenAIError as exc:
+            raise AnalyzerError(f"web search failed: {exc}") from exc
+
+        calls = sum(1 for item in resp.output if getattr(item, "type", "") == "web_search_call")
+        usage = resp.usage
+        if self._budget is not None:
+            if usage is not None:
+                details = getattr(usage, "input_tokens_details", None)
+                await self._budget.record(
+                    model=self._model,
+                    input_tokens=int(usage.input_tokens or 0),
+                    output_tokens=int(usage.output_tokens or 0),
+                    cached_input_tokens=int(getattr(details, "cached_tokens", 0) or 0),
+                )
+            if calls:
+                await self._budget.record(model="web_search", input_tokens=0, output_tokens=calls)
+        log.info("web_search.done", calls=calls)
+        text = (resp.output_text or "").strip()
+        try:
+            return json.loads(text)  # type: ignore[no-any-return]
+        except json.JSONDecodeError as exc:
+            raise AnalyzerError(f"web search returned non-JSON: {text[:200]}") from exc

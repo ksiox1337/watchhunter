@@ -40,7 +40,9 @@ async def main(item: str) -> None:
         })
         ev = await c.analyzer.evaluate(listing)
         print(ev.model_dump(exclude={"raw_response"}))
-        await c.notifier.send(NotificationPayload(listing=listing, evaluation=ev))
+        lid = await c.repository.upsert_listing(listing)
+        eid = await c.repository.save_evaluation(lid, ev)
+        await c.notifier.send(NotificationPayload(listing=listing, evaluation=ev, evaluation_id=eid))
         print("sent")
     finally:
         await c.aclose()

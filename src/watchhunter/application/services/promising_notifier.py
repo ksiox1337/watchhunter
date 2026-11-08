@@ -114,7 +114,9 @@ class PromisingNotifier:
             if updates:
                 listing = listing.model_copy(update=updates)
 
-        payload = NotificationPayload(listing=listing, evaluation=evaluation)
+        payload = NotificationPayload(
+            listing=listing, evaluation=evaluation, evaluation_id=evaluation_id
+        )
         try:
             await self._notifier.send(payload)
             await self._repo.mark_notified(evaluation_id)

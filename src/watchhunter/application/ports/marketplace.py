@@ -21,6 +21,8 @@ class ListingState:
 
     price_eur: Decimal | None
     shipping_eur: Decimal | None
+    # Auctions: current number of bids, when the source reports it.
+    bid_count: int | None = None
 
 
 @dataclass(frozen=True)

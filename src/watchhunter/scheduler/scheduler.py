@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -25,6 +27,7 @@ class Scheduler:
         buy_now_interval_seconds: int = 0,
         kleinanzeigen_use_case: ScanWatchesUseCase | None = None,
         kleinanzeigen_interval_seconds: int = 60,
+        extra_jobs: list[tuple[str, Any, int]] | None = None,
     ) -> None:
         self._scan = scan_use_case
         self._notify = notify_use_case
@@ -36,6 +39,8 @@ class Scheduler:
         self._buy_now_interval_seconds = buy_now_interval_seconds
         self._kleinanzeigen_interval_seconds = kleinanzeigen_interval_seconds
         self._scheduler = AsyncIOScheduler(timezone="UTC")
+        # (name, async callable, interval seconds): sale tracker, Telegram updates.
+        self._extra_jobs = extra_jobs or []
 
     def start(self) -> None:
         self._scheduler.add_job(
@@ -97,6 +102,18 @@ class Scheduler:
         else:
             ka_cadence_label = None
 
+        for name, job, seconds in self._extra_jobs:
+            self._scheduler.add_job(
+                _safe(name, job),
+                trigger=IntervalTrigger(seconds=seconds),
+                id=name,
+                name=name,
+                max_instances=1,
+                coalesce=True,
+                replace_existing=True,
+                next_run_time=_now_plus_seconds(20),
+            )
+
         self._scheduler.start()
         log.info(
             "scheduler.started",
@@ -144,3 +161,13 @@ def _now_plus_seconds(s: int):  # type: ignore[no-untyped-def]
     from datetime import datetime, timedelta, timezone
 
     return datetime.now(timezone.utc) + timedelta(seconds=s)
+
+
+def _safe(name: str, job: Any) -> Any:
+    async def run() -> None:
+        try:
+            await job()
+        except Exception as exc:  # a failed run never stops the loop
+            log.exception("job.failed", job=name, error=str(exc)[:200])
+
+    return run

@@ -115,6 +115,19 @@ def format_card(
         rarity_line += f" — {html.escape(ev.rarity_note)}"
 
     lines = [head, title, rarity_line, "", price_line, value_line]
+    if ev.web_examples and ev.web_low_eur and ev.web_high_eur:
+        lines.append(
+            f"🔎 Продано в сети: {_short(ev.web_low_eur)}–{money(ev.web_high_eur)}"
+            f" ({ev.web_examples} прим.)"
+        )
+    if ev.sales_sold:
+        lines.append(
+            f"📊 Наши данные: {ev.sales_sold} продаж за 90 дн., медиана {money(ev.sales_median_eur)}"
+        )
+    if ev.photo_seen_url:
+        lines.append(
+            f'📸 <a href="{html.escape(ev.photo_seen_url)}">Это фото уже было в другом объявлении</a>'
+        )
     if not is_bin:
         lines.append(f"⏳ {_end_label(listing.end_time, now, tz)}")
     caption = "\n".join(lines)
@@ -129,6 +142,11 @@ def format_card(
         parts.append("<b>История</b>\n" + html.escape(ev.story))
     if ev.checks:
         parts.append("<b>Проверить</b>\n" + _bullets(ev.checks, 2))
+    if ev.web_sources:
+        links = " · ".join(
+            f'<a href="{html.escape(u)}">{i}</a>' for i, u in enumerate(ev.web_sources[:3], 1)
+        )
+        parts.append(f"<b>Источники цен</b>: {links}")
     parts.append(
         f"<i>Подделка: риск {_risk(ev.fake_risk)} · "
         f"уверенность {ev.confidence}%</i>"
@@ -179,3 +197,25 @@ def _level(r: RarityLevel) -> str:
 
 def _risk(r: FakeRisk) -> str:
     return _RISK.get(r.value, r.value)
+
+
+FEEDBACK = {"like": "👍", "dislike": "👎", "bought": "💰"}
+
+
+def card_keyboard(
+    payload: NotificationPayload, chosen: str | None = None
+) -> list[list[dict[str, str]]]:
+    rows = [[{"text": button_label(payload), "url": str(payload.listing.url)}]]
+    if payload.evaluation_id is not None:
+        rows.append(feedback_row(payload.evaluation_id, chosen))
+    return rows
+
+
+def feedback_row(evaluation_id: int, chosen: str | None = None) -> list[dict[str, str]]:
+    return [
+        {
+            "text": f"{emoji} ✓" if action == chosen else emoji,
+            "callback_data": f"fb:{evaluation_id}:{action}",
+        }
+        for action, emoji in FEEDBACK.items()
+    ]

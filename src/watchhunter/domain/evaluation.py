@@ -59,6 +59,16 @@ class WatchEvaluation(BaseModel):
     story: str = ""
     why: tuple[str, ...] = ()
     checks: tuple[str, ...] = ()
+    # Evidence gathered for finds (see sales/, web check, photo index).
+    web_low_eur: Decimal | None = None
+    web_high_eur: Decimal | None = None
+    web_examples: int = 0
+    web_summary: str = ""
+    web_sources: tuple[str, ...] = ()
+    sales_sold: int = 0
+    sales_unsold: int = 0
+    sales_median_eur: Decimal | None = None
+    photo_seen_url: str = ""
     raw_response: dict[str, Any] = Field(default_factory=dict)
 
     @property
@@ -90,4 +100,13 @@ def presentation_fields(raw: dict[str, Any]) -> dict[str, Any]:
         "story": str(raw.get("story_ru") or ""),
         "why": items("why_ru"),
         "checks": items("checks_ru"),
+        "web_low_eur": dec((raw.get("web_check") or {}).get("sold_low_eur")) or None,
+        "web_high_eur": dec((raw.get("web_check") or {}).get("sold_high_eur")) or None,
+        "web_examples": int((raw.get("web_check") or {}).get("examples_found") or 0),
+        "web_summary": str((raw.get("web_check") or {}).get("summary_ru") or ""),
+        "web_sources": tuple(str(u) for u in (raw.get("web_check") or {}).get("sources") or []),
+        "sales_sold": int((raw.get("sales") or {}).get("sold") or 0),
+        "sales_unsold": int((raw.get("sales") or {}).get("unsold") or 0),
+        "sales_median_eur": dec((raw.get("sales") or {}).get("median")),
+        "photo_seen_url": str((raw.get("photo_match") or {}).get("listing_url") or ""),
     }

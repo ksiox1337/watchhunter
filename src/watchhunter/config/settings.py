@@ -120,6 +120,8 @@ class Settings(BaseSettings):
     screen_margin: int = 10
     # Verdict first, Russian card text only for listings that will be sent.
     two_step_eval: bool = True
+    # Before writing a find's card, search the web for sold prices (~$0.01/search).
+    web_check_finds: bool = True
     # gpt-5 family only: "minimal" | "low" | "medium" | "high". Minimal = fastest, cheapest.
     openai_reasoning_effort: str = "minimal"
     # "low" = fixed ~85 tokens/image; "high"/"auto" tile the image (more tokens, finer detail).
@@ -164,6 +166,8 @@ class Settings(BaseSettings):
     min_score: int = 60
     # Only notify references at least this rare: "", low, medium, high, very_high.
     min_rarity: str = ""
+    # Only notify when estimated value - price is at least this (EUR).
+    min_profit_eur: Decimal = Decimal("30")
     auction_ends_within_hours: int = 24
     max_price_eur: Decimal | None = None
     max_shipping_eur: Decimal | None = None
