@@ -107,7 +107,8 @@ class Scheduler:
         )
 
     async def shutdown(self) -> None:
-        self._scheduler.shutdown(wait=False)
+        if self._scheduler.running:
+            self._scheduler.shutdown(wait=False)
         log.info("scheduler.stopped")
 
     async def _safe_scan(self) -> None:
