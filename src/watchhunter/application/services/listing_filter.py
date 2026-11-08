@@ -21,10 +21,13 @@ class ListingFilter:
         ends_within_hours: int,
         max_price_eur: Decimal | None = None,
         max_shipping_eur: Decimal | None = None,
+        max_total_eur: Decimal | None = None,
     ) -> None:
         self._ends_within_hours = ends_within_hours
         self._max_price_eur = max_price_eur
         self._max_shipping_eur = max_shipping_eur
+        # Price + shipping (when shipping is known): what you actually pay.
+        self._max_total_eur = max_total_eur
 
     def is_eligible(self, listing: Listing) -> bool:
         if not listing.image_urls:
@@ -43,6 +46,11 @@ class ListingFilter:
             and listing.shipping_cost_eur > self._max_shipping_eur
         ):
             return False
+
+        if self._max_total_eur is not None:
+            total = listing.current_price_eur + (listing.shipping_cost_eur or Decimal("0"))
+            if total > self._max_total_eur:
+                return False
 
         if listing.buying_option == BuyingOption.AUCTION:
             if listing.bid_count <= 0:

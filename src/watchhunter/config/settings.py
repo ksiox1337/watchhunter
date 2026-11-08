@@ -171,6 +171,8 @@ class Settings(BaseSettings):
     auction_ends_within_hours: int = 24
     max_price_eur: Decimal | None = None
     max_shipping_eur: Decimal | None = None
+    # Cap on price + shipping (what you pay); also re-checked right before sending.
+    max_total_eur: Decimal | None = None
     reanalysis_ttl_hours: int = 6
     log_level: str = "INFO"
     log_json: bool = True

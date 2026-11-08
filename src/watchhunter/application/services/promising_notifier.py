@@ -40,12 +40,14 @@ class PromisingNotifier:
         repository: ListingRepository,
         max_price_eur: Decimal | None = None,
         max_shipping_eur: Decimal | None = None,
+        max_total_eur: Decimal | None = None,
     ) -> None:
         self._notifier = notifier
         self._marketplace = marketplace
         self._repo = repository
         self._max_price_eur = max_price_eur
         self._max_shipping_eur = max_shipping_eur
+        self._max_total_eur = max_total_eur
 
     async def notify_one(
         self,
@@ -61,7 +63,9 @@ class PromisingNotifier:
             log.info("notify.listing_ended", external_id=listing.external_id)
             return "gone"
         needs_refresh = (
-            self._max_price_eur is not None or self._max_shipping_eur is not None
+            self._max_price_eur is not None
+            or self._max_shipping_eur is not None
+            or self._max_total_eur is not None
         )
 
         if needs_refresh:
@@ -92,6 +96,17 @@ class PromisingNotifier:
                     external_id=listing.external_id,
                     current_eur=str(state.price_eur),
                     cap_eur=str(self._max_price_eur),
+                )
+                await self._repo.mark_notified(evaluation_id)
+                return "overpriced"
+
+            total = state.price_eur + (state.shipping_eur or Decimal("0"))
+            if self._max_total_eur is not None and total > self._max_total_eur:
+                log.info(
+                    "notify.skipped_overpriced",
+                    external_id=listing.external_id,
+                    total_eur=str(total),
+                    cap_eur=str(self._max_total_eur),
                 )
                 await self._repo.mark_notified(evaluation_id)
                 return "overpriced"

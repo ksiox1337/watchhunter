@@ -143,6 +143,7 @@ async def build_container(settings: Settings) -> Container:
         ends_within_hours=settings.auction_ends_within_hours,
         max_price_eur=settings.max_price_eur,
         max_shipping_eur=settings.max_shipping_eur,
+        max_total_eur=settings.max_total_eur,
     )
     deal_evaluator = DealEvaluator(
         min_score=settings.min_score,
@@ -155,6 +156,7 @@ async def build_container(settings: Settings) -> Container:
         repository=repository,
         max_price_eur=settings.max_price_eur,
         max_shipping_eur=settings.max_shipping_eur,
+        max_total_eur=settings.max_total_eur,
     )
 
     marketplaces = [Marketplace(m) for m in settings.ebay_marketplaces]
@@ -197,6 +199,7 @@ async def build_container(settings: Settings) -> Container:
             repository=repository,
             max_price_eur=settings.max_price_eur,
             max_shipping_eur=settings.max_shipping_eur,
+            max_total_eur=settings.max_total_eur,
         )
         kleinanzeigen_uc = ScanWatchesUseCase(
             marketplace=ka_adapter,
