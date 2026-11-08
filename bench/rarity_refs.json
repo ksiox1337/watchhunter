@@ -1,0 +1,186 @@
+{
+  "_note": "Expected rarity tier per reference: a collector's judgement of how often the ORIGINAL reference turns up for sale, used only to benchmark the classifier. low = current production / mass market; medium = discontinued, regularly on sale; high = scarce vintage, a few per month across markets.",
+  "refs": [
+    {
+      "query": "casio f-91w",
+      "must": [
+        "f-91w",
+        "f91w"
+      ],
+      "tier": "low"
+    },
+    {
+      "query": "casio a168wa",
+      "must": [
+        "a168"
+      ],
+      "tier": "low"
+    },
+    {
+      "query": "casio ca-53w",
+      "must": [
+        "ca-53",
+        "ca53"
+      ],
+      "tier": "low",
+      "exclude": []
+    },
+    {
+      "query": "casio ae-1200wh",
+      "must": [
+        "ae-1200",
+        "ae1200"
+      ],
+      "tier": "low"
+    },
+    {
+      "query": "casio dw-5600e",
+      "must": [
+        "dw-5600",
+        "dw5600"
+      ],
+      "tier": "low"
+    },
+    {
+      "query": "seiko 6309",
+      "must": [
+        "6309"
+      ],
+      "tier": "medium"
+    },
+    {
+      "query": "seiko bell-matic",
+      "must": [
+        "bell"
+      ],
+      "tier": "medium"
+    },
+    {
+      "query": "seiko 7t32",
+      "must": [
+        "7t32"
+      ],
+      "tier": "medium"
+    },
+    {
+      "query": "seiko 6119",
+      "must": [
+        "6119"
+      ],
+      "tier": "medium"
+    },
+    {
+      "query": "citizen 8110",
+      "must": [
+        "8110"
+      ],
+      "tier": "medium"
+    },
+    {
+      "query": "seiko 0674",
+      "must": [
+        "0674"
+      ],
+      "tier": "high"
+    },
+    {
+      "query": "pulsar p2",
+      "must": [
+        "p2"
+      ],
+      "tier": "high",
+      "exclude": [
+        "psr",
+        "hamilton"
+      ]
+    },
+    {
+      "query": "casio ca-90",
+      "must": [
+        "ca-90",
+        "ca90"
+      ],
+      "tier": "high"
+    },
+    {
+      "query": "casiotron",
+      "must": [
+        "casiotron"
+      ],
+      "tier": "high",
+      "exclude": [
+        "trn-50",
+        "trn50",
+        "trn-",
+        "reissue",
+        "re-issue",
+        "neuauflage",
+        "2024"
+      ]
+    },
+    {
+      "query": "citizen crystron",
+      "must": [
+        "crystron"
+      ],
+      "tier": "medium"
+    },
+    {
+      "query": "seiko m159",
+      "must": [
+        "m159"
+      ],
+      "tier": "high"
+    },
+    {
+      "query": "seiko h558",
+      "must": [
+        "h558"
+      ],
+      "tier": "high",
+      "exclude": [
+        "snj",
+        "2019",
+        "2020",
+        "2021",
+        "reissue"
+      ]
+    }
+  ],
+  "exclude_all": [
+    "part ",
+    "parts only",
+    "teil",
+    "crystal",
+    "glas",
+    "glass",
+    "bulb",
+    "birne",
+    "bombilla",
+    "magnet",
+    "pins",
+    "keypad",
+    "replacement",
+    "ring ",
+    "stopper",
+    "balance",
+    "strap",
+    "band ",
+    "armband kompatibel",
+    "bracelet only",
+    "button",
+    "box only",
+    "manual only",
+    "anniversary",
+    "reissue",
+    "re-edition",
+    "lever",
+    "hebel",
+    "deckel",
+    "kugeln",
+    "push pin",
+    "limited model",
+    "50th",
+    "37mm black"
+  ]
+}

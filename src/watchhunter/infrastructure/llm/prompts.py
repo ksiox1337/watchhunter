@@ -103,10 +103,14 @@ EVALUATION RULES
 11. checks_ru — 1-2 concrete things (each under 80 characters) to verify before bidding (caseback number,
     module, functions, plating, seller photos missing).
 12. rarity — how hard THIS reference is to find, not how nice the listing is:
-      "low"       still in production or made in huge numbers, always on eBay
-      "medium"    discontinued, turns up every few weeks
-      "high"      short production run or regional (JDM) model, turns up a few
-                  times a year
+      "low"       ONLY current production / modern mass market (bought new
+                  today), always on eBay. Never use "low" for a discontinued
+                  vintage reference, however common it was.
+      "medium"    discontinued vintage reference, turns up for sale every week
+                  or two (common 1960s-80s Seiko 5, Citizen quartz, Casio LCD)
+      "high"      scarce vintage reference collectors hunt for, a few listings
+                  per month worldwide (e.g. Seiko 0674 LC / M159, Pulsar P2 LED,
+                  Casio CA-90 game-calculator, early Casiotron, H558 "Arnie")
       "very_high" grail: prototypes, limited editions, NOS-in-box of a rare
                   reference, turns up once a year or less
     rarity_note_ru — max 70 chars, the concrete reason (years made, edition
