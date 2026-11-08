@@ -20,6 +20,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
+from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup, Tag
 from tenacity import (
@@ -272,6 +273,7 @@ class KleinanzeigenMarketplaceAdapter(MarketplacePort):
                 image_urls=image_urls,  # type: ignore[arg-type]
                 buying_option=BuyingOption.FIXED_PRICE,
                 shipping_cost_eur=shipping,
+                listed_at=_listed_at(card.get_text(" ", strip=True)),
             )
         except Exception as exc:
             log.debug("ka.card_parse_skip", error=str(exc))
@@ -449,3 +451,30 @@ def _extract_item_shipping(soup: BeautifulSoup) -> Decimal | None:
         return None
     # No shipping mentioned at all → likely pickup-only
     return _INELIGIBLE_SHIPPING
+
+
+_BERLIN = ZoneInfo("Europe/Berlin")
+_TODAY = re.compile(r"\b(Heute|Gestern),\s*(\d{1,2}):(\d{2})")
+_DATE = re.compile(r"\b(\d{2})\.(\d{2})\.(\d{4})\b")
+
+
+def _listed_at(text: str) -> datetime | None:
+    """'Heute, 20:15' / 'Gestern, 18:02' / '07.11.2026' on the card -> UTC time.
+
+    Lets fresh-only mode judge new listings by age, so restarts never hide
+    the ones that appeared in between.
+    """
+    now = datetime.now(_BERLIN)
+    m = _TODAY.search(text)
+    if m:
+        day = now.date() - timedelta(days=0 if m.group(1) == "Heute" else 1)
+        local = datetime(day.year, day.month, day.day, int(m.group(2)), int(m.group(3)), tzinfo=_BERLIN)
+        return local.astimezone(timezone.utc)
+    m = _DATE.search(text)
+    if m:
+        try:
+            local = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)), tzinfo=_BERLIN)
+        except ValueError:
+            return None
+        return local.astimezone(timezone.utc)
+    return None
