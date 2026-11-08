@@ -30,6 +30,8 @@ PRICING: dict[str, dict[str, Decimal]] = {
     "gpt-4.1-nano": _row("0.10", "0.40", "0.025"),
     "gpt-4.1-mini": _row("0.40", "1.60", "0.10"),
     "gpt-4o-mini": _row("0.15", "0.60", "0.075"),
+    # TypeSafe Jev (aggregator figures, early access; check typesafe.ai)
+    "jev": _row("0.04", "0"),
     # Historical (previous Gemini / DeepSeek setup)
     "gemini-2.5-pro": _row("1.25", "10.00"),
     "gemini-2.5-flash": _row("0.30", "2.50"),

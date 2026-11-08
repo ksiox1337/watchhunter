@@ -120,6 +120,19 @@ class Settings(BaseSettings):
     openai_image_detail: str = "low"
     openai_rate_limit_rpm: int = 300
     openai_triage_rate_limit_rpm: int = 300
+    # ─── Triage provider ───────────────────────────────────────────────────
+    #   openai — batched gpt-5-nano JSON verdicts
+    #   jev    — TypeSafe Jev decision model (noul probability per listing);
+    #            falls back to OpenAI triage on any Jev error.
+    triage_provider: str = "openai"
+    typesafe_api_key: str = ""
+    jev_model: str = "jev-latest"
+    jev_base_url: str = "https://api.typesafe.ai/v1/systemone"
+    # Listings with p(interesting) >= threshold go to the photo evaluation.
+    # Low on purpose: a missed deal costs more than one extra mini call.
+    jev_threshold: float = 0.3
+    jev_rate_limit_rpm: int = 120
+
     max_images_per_listing: int = 4
     triage_batch_size: int = 25
     # Parallel evaluations per scan.

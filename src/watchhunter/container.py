@@ -25,6 +25,7 @@ from watchhunter.infrastructure.ebay.adapter import EbayApiMarketplaceAdapter
 from watchhunter.infrastructure.ebay.client import EbayBrowseClient
 from watchhunter.infrastructure.ebay.html_adapter import EbayHtmlMarketplaceAdapter
 from watchhunter.infrastructure.http.client import HttpClient
+from watchhunter.infrastructure.jev.adapter import JevTriageAnalyzer
 from watchhunter.infrastructure.kleinanzeigen.adapter import (
     KleinanzeigenMarketplaceAdapter,
 )
@@ -253,7 +254,7 @@ def _build_analyzer(
         reasoning_effort=settings.openai_reasoning_effort,
         budget=budget,
     )
-    return OpenAIAnalyzerAdapter(
+    openai_analyzer = OpenAIAnalyzerAdapter(
         client=client,
         http=http,
         rate_limiter=RateLimiter(rate_per_minute=settings.openai_rate_limit_rpm),
@@ -264,6 +265,24 @@ def _build_analyzer(
         max_images=settings.max_images_per_listing,
         image_detail=settings.openai_image_detail,
         triage_batch_size=settings.triage_batch_size,
+    )
+    if settings.triage_provider.lower().strip() != "jev":
+        return openai_analyzer
+    if not settings.typesafe_api_key:
+        log.warning("container.jev_disabled", reason="TYPESAFE_API_KEY is empty")
+        return openai_analyzer
+    log.info("container.triage", impl="jev", model=settings.jev_model,
+             threshold=settings.jev_threshold)
+    return JevTriageAnalyzer(
+        api_key=settings.typesafe_api_key,
+        http=http,
+        evaluator=openai_analyzer,
+        rate_limiter=RateLimiter(rate_per_minute=settings.jev_rate_limit_rpm),
+        model=settings.jev_model,
+        base_url=settings.jev_base_url,
+        threshold=settings.jev_threshold,
+        batch_size=settings.triage_batch_size,
+        budget=budget,
     )
 
 
