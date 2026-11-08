@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
 
+import aiohttp
 from bs4 import BeautifulSoup, Tag
 from tenacity import (
     AsyncRetrying,
@@ -45,6 +47,19 @@ _MARKETPLACE_HOSTS: dict[Marketplace, tuple[str, str, str]] = {
 }
 
 # Pretend to be Chrome — eBay aggressively blocks unrecognised UAs.
+_BLOCK_MIN_S = 300.0
+_BLOCK_MAX_S = 3600.0
+
+
+class _Transient(Exception):
+    """Network error / 5xx worth a quick retry (never a bot block)."""
+
+
+def _is_challenge(html: str) -> bool:
+    """eBay's bot-check interstitial: tiny page with the splashui challenge."""
+    return len(html) < 20_000 and ("splashui" in html or "challenge" in html.lower())
+
+
 _BROWSER_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -84,6 +99,25 @@ class EbayHtmlMarketplaceAdapter(MarketplacePort):
         self._http = http
         self._rate = rate_limiter
         self._pages = max(1, pages_per_query)
+        # Bot-challenge cooldown shared by every job using this adapter: once
+        # eBay serves its "Pardon our interruption" page or a 403, more
+        # requests only extend the block, so all eBay traffic pauses.
+        self._blocked_until = 0.0
+        self._block_s = _BLOCK_MIN_S
+        self._last_out_of_window = 0
+
+    def _blocked(self) -> bool:
+        return time.monotonic() < self._blocked_until
+
+    def _note_block(self, reason: str) -> None:
+        if self._blocked():
+            return
+        self._blocked_until = time.monotonic() + self._block_s
+        log.warning("ebay.html.blocked", reason=reason, pause_s=int(self._block_s))
+        self._block_s = min(self._block_s * 2, _BLOCK_MAX_S)
+
+    def _note_ok(self) -> None:
+        self._block_s = _BLOCK_MIN_S
 
     async def fetch_gallery(
         self, listing: Listing, max_images: int
@@ -99,6 +133,8 @@ class EbayHtmlMarketplaceAdapter(MarketplacePort):
             "Accept-Language": accept_language,
             "Accept-Encoding": "gzip, deflate, br",
         }
+        if self._blocked():
+            return ()
         try:
             async with self._rate:
                 async with self._http.session.get(url, headers=headers) as resp:
@@ -131,6 +167,11 @@ class EbayHtmlMarketplaceAdapter(MarketplacePort):
             "Accept-Language": accept_language,
             "Accept-Encoding": "gzip, deflate, br",
         }
+        if self._blocked():
+            return ListingState(
+                price_eur=listing.current_price_eur,
+                shipping_eur=listing.shipping_cost_eur,
+            )
         try:
             async with self._rate:
                 async with self._http.session.get(url, headers=headers) as resp:
@@ -187,6 +228,9 @@ class EbayHtmlMarketplaceAdapter(MarketplacePort):
         pages = max(1, query.max_pages if query.max_pages is not None else self._pages)
         for keyword in query.keywords:
             for page in range(1, pages + 1):
+                if self._blocked():
+                    log.info("ebay.html.scan.paused", marketplace=query.marketplace.value)
+                    return
                 async with self._rate:
                     html = await self._fetch_search_page(
                         host=host,
@@ -218,6 +262,13 @@ class EbayHtmlMarketplaceAdapter(MarketplacePort):
                         continue
                     seen.add(listing.dedup_key)
                     yield listing
+                # Auctions are sorted ending-soonest: once a page reaches past
+                # the time window, every later page is outside it too.
+                if (
+                    query.buying_option == BuyingOption.AUCTION
+                    and self._last_out_of_window > 0
+                ):
+                    break
                 # be polite
                 await asyncio.sleep(0.5)
         log.info(
@@ -269,14 +320,23 @@ class EbayHtmlMarketplaceAdapter(MarketplacePort):
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(3),
                 wait=wait_exponential(min=1, max=8),
-                retry=retry_if_exception_type(Exception),
+                retry=retry_if_exception_type((_Transient, aiohttp.ClientError, asyncio.TimeoutError)),
                 reraise=True,
             ):
                 with attempt:
                     async with self._http.session.get(url, headers=headers) as resp:
+                        if resp.status in (403, 429):
+                            # Retrying a block right away only deepens it.
+                            self._note_block(f"HTTP {resp.status}")
+                            return ""
                         if resp.status >= 400:
-                            raise RuntimeError(f"HTTP {resp.status}")
-                        return await resp.text()
+                            raise _Transient(f"HTTP {resp.status}")
+                        html = await resp.text()
+                    if _is_challenge(html):
+                        self._note_block("challenge page")
+                        return ""
+                    self._note_ok()
+                    return html
         except Exception as exc:
             log.warning("ebay.html.fetch_failed", url=url, error=str(exc))
             return ""
@@ -341,6 +401,7 @@ class EbayHtmlMarketplaceAdapter(MarketplacePort):
             out_of_window=out_of_window,
             ended=past,
         )
+        self._last_out_of_window = out_of_window
 
         # One-shot diagnostic: when nothing parsed, save the HTML so we can
         # inspect what eBay actually returned. Removed after we identify the
