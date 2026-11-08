@@ -1,26 +1,5 @@
-"""Telegram card for one find: Russian, HTML, one message with the photo on top.
-
-Layout (sendMessage, photo as a large link preview above the text):
-
-    🟢 ПОКУПАТЬ · Аукцион · 78/100
-    Seiko A159-4019 в позолоченном корпусе
-    1977 · Seiko · A159-4019
-
-    Цена сейчас   30,50 € · 4 ставки
-    С доставкой   36,00 € (доставка 5,50 €)
-    Рынок         150–300 € (≈ 220 €)
-    Потенциал     +184 € · ×6,1
-    Окончание     сегодня 20:00 · через 1 ч 10 мин
-
-    Почему стоит внимания
-    • …
-    ▸ История (expandable)
-    Что проверить
-    • …
-    Редкость средняя · Риск подделки средний · Уверенность 70%
-
-plus an inline "Открыть на eBay" button.
-"""
+"""Telegram card for one find: big photo, Russian caption of 4-5 lines,
+reasons / story / checks in a collapsed quote, and an inline eBay button."""
 
 from __future__ import annotations
 
@@ -32,8 +11,6 @@ from zoneinfo import ZoneInfo
 from watchhunter.application.ports.notifier import NotificationPayload
 from watchhunter.domain.evaluation import FakeRisk, RarityLevel, Recommendation
 from watchhunter.domain.models import BuyingOption, Marketplace
-
-TEXT_LIMIT = 4096
 
 _VERDICT = {
     Recommendation.BUY: "🟢 <b>ПОКУПАТЬ</b>",
@@ -84,77 +61,90 @@ def _bullets(items: tuple[str, ...], limit: int) -> str:
     return "\n".join(f"• {html.escape(x.strip().rstrip('.'))}" for x in items[:limit])
 
 
+CAPTION_LIMIT = 1024
+
+
 def format_card(
     payload: NotificationPayload,
     *,
     tz: ZoneInfo,
     now: datetime | None = None,
+    limit: int = CAPTION_LIMIT,
 ) -> str:
+    """Photo caption: 4-5 short lines, details in a collapsed quote."""
     listing, ev = payload.listing, payload.evaluation
     now = now or datetime.now(timezone.utc)
     is_bin = listing.buying_option == BuyingOption.FIXED_PRICE
-    source = _SOURCE.get(listing.marketplace, "eBay")
 
-    # ── header ──────────────────────────────────────────────────────────
     kind = "Купить сейчас" if is_bin else "Аукцион"
     head = f"{_VERDICT.get(ev.recommendation, '')} · {kind} · <b>{ev.score}</b>/100"
     name = ev.display_name or f"{ev.brand} {ev.model}".strip()
-    meta = " · ".join(
-        x for x in (ev.era, ev.brand, ev.model if ev.model not in name else "") if x
-    )
-    lines = [head, "", f"<b>{html.escape(name)}</b>"]
-    if meta:
-        lines.append(f"<i>{html.escape(meta)}</i>")
-    lines.append("")
+    title = f"<b>{html.escape(name)}</b>"
+    if ev.era:
+        title += f" · {html.escape(ev.era)}"
 
-    # ── numbers ─────────────────────────────────────────────────────────
     price = listing.current_price_eur
     shipping = listing.shipping_cost_eur
     total = price + (shipping or Decimal("0"))
     mid = ev.estimated_market_value_eur
     profit = mid - total
 
-    price_line = f"💶 Цена сейчас: <b>{money(price)}</b>"
+    price_line = f"💶 <b>{money(price)}</b>"
+    if shipping is not None:
+        price_line += " + доставка бесплатно" if shipping == 0 else f" + {money(shipping)} доставка"
     if not is_bin:
         price_line += f" · {_bids(listing.bid_count)}"
-    lines.append(price_line)
-    if shipping is not None:
-        ship = "бесплатно" if shipping == 0 else money(shipping)
-        lines.append(f"🚚 С доставкой: <b>{money(total)}</b> (доставка {ship})")
-    else:
-        lines.append("🚚 Доставка: не указана")
 
     low, high = ev.value_low_eur, ev.value_high_eur
-    if low is not None and high is not None and 0 < low <= high:
-        lines.append(f"📈 Рынок: {money(low)}–{money(high)} (≈ {money(mid)})")
-    else:
-        lines.append(f"📈 Рынок: ≈ {money(mid)}")
-    multiple = f" · ×{(mid / total):.1f}".replace(".", ",") if total > 0 and profit > 0 else ""
-    lines.append(f"💰 Потенциал: <b>{money(profit, sign=True)}</b>{multiple}")
+    market = (
+        f"{_short(low)}–{money(high)}"
+        if low is not None and high is not None and 0 < low <= high
+        else f"≈ {money(mid)}"
+    )
+    multiple = f" (×{(mid / total):.1f})".replace(".", ",") if total > 0 and profit > 0 else ""
+    value_line = f"📈 Рынок {market} → <b>{money(profit, sign=True)}</b>{multiple}"
+
+    lines = [head, title, "", price_line, value_line]
     if not is_bin:
-        lines.append(f"⏳ Окончание: {_end_label(listing.end_time, now, tz)}")
+        lines.append(f"⏳ {_end_label(listing.end_time, now, tz)}")
+    caption = "\n".join(lines)
 
-    # ── why / story / checks ───────────────────────────────────────────
+    # Collapsed details, most useful first; cut to the caption budget.
+    parts: list[str] = []
     if ev.why:
-        lines += ["", "<b>Почему стоит внимания</b>", _bullets(ev.why, 4)]
+        parts.append("<b>Почему</b>\n" + _bullets(ev.why, 3))
     elif ev.reasoning:
-        lines += ["", f"<b>Вывод:</b> {html.escape(ev.reasoning)}"]
+        parts.append(html.escape(ev.reasoning))
     if ev.story:
-        lines += ["", f"<blockquote expandable><b>📖 История</b>\n{html.escape(ev.story)}</blockquote>"]
+        parts.append("<b>История</b>\n" + html.escape(ev.story))
     if ev.checks:
-        lines += ["", "<b>Что проверить</b>", _bullets(ev.checks, 3)]
-    if ev.condition:
-        lines += ["", f"<b>Состояние:</b> {html.escape(ev.condition)}"]
+        parts.append("<b>Проверить</b>\n" + _bullets(ev.checks, 2))
+    parts.append(
+        f"<i>Редкость {_level(ev.rarity)} · подделка {_risk(ev.fake_risk)} · "
+        f"уверенность {ev.confidence}%</i>"
+    )
+    room = limit - len(caption) - len("\n\n<blockquote expandable></blockquote>")
+    details = _fit(parts, room)
+    if details:
+        caption += f"\n\n<blockquote expandable>{details}</blockquote>"
+    return caption
 
-    lines += [
-        "",
-        f"<i>Редкость {_level(ev.rarity)} · риск подделки {_risk(ev.fake_risk)} · "
-        f"уверенность {ev.confidence}% · {source}</i>",
-    ]
-    text = "\n".join(lines)
-    if len(text) > TEXT_LIMIT:  # drop the least important block first
-        text = text.replace(f"\n\n<b>Состояние:</b> {html.escape(ev.condition)}", "")
-    return text[:TEXT_LIMIT]
+
+def _short(value: Decimal) -> str:
+    return money(value).removesuffix(" €")
+
+
+def _fit(parts: list[str], room: int) -> str:
+    """Join whole parts while they fit; never cut inside an HTML tag."""
+    out: list[str] = []
+    used = 0
+    for part in parts:
+        add = len(part) + (2 if out else 0)
+        if used + add > room:
+            continue
+        out.append(part)
+        used += add
+    return "\n\n".join(out)
 
 
 def button_label(payload: NotificationPayload) -> str:

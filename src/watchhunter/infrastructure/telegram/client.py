@@ -39,13 +39,18 @@ class TelegramBotClient:
         photo_url: str,
         caption: str,
         parse_mode: str = "HTML",
+        button: tuple[str, str] | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "chat_id": self._chat_id,
             "photo": photo_url,
-            "caption": caption,
+            "caption": caption[:1024],
             "parse_mode": parse_mode,
         }
+        if button:
+            payload["reply_markup"] = {
+                "inline_keyboard": [[{"text": button[0], "url": button[1]}]]
+            }
         await self._post("/sendPhoto", payload)
 
     async def send_message(

@@ -24,16 +24,22 @@ class TelegramNotifierAdapter(NotifierPort):
         self._tz = ZoneInfo(timezone)
 
     async def send(self, payload: NotificationPayload) -> None:
-        text = format_card(payload, tz=self._tz)
+        caption = format_card(payload, tz=self._tz)
         photo = str(payload.listing.image_urls[0]) if payload.listing.image_urls else None
         button = (button_label(payload), str(payload.listing.url))
+        if photo:
+            try:
+                await self._client.send_photo(photo_url=photo, caption=caption, button=button)
+                return
+            except NotifierError as exc:
+                # Telegram could not fetch the image (or rejected the HTML).
+                log.warning("telegram.photo_failed", error=str(exc)[:200])
         try:
-            await self._client.send_message(text=text, preview_url=photo, button=button)
+            await self._client.send_message(text=caption, button=button)
             return
         except NotifierError as exc:
-            # Usually an HTML entity Telegram rejects; never lose the find.
             log.warning("telegram.html_failed", error=str(exc)[:200])
-        plain = html.unescape(re.sub(r"<[^>]+>", "", text))
+        plain = html.unescape(re.sub(r"<[^>]+>", "", caption))
         await self._client.send_message(
             text=f"{plain}\n\n{payload.listing.url}", parse_mode="", button=button
         )

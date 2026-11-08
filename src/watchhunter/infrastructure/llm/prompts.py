@@ -80,15 +80,16 @@ EVALUATION RULES
 8. Write for a Russian-speaking collector: every free-text field below
    (condition, reasoning, display_name_ru, era_ru, story_ru, why_ru, checks_ru)
    is in RUSSIAN; keep model numbers and brand names as they are.
-9. story_ru — 2-4 sentences on what this watch is and why collectors care:
+   Keep it short — it is shown on a phone under a photo.
+9. story_ru — 2-3 short sentences (max ~300 characters) on what this watch is and why collectors care:
    the line/module and its place in watch history, notable firsts, famous
    wearers or film appearances (e.g. Seiko M354/0674 "James Bond", H558
    "Arnie"). ONLY facts you are sure of. If you are not sure about this exact
    model, describe the family or era instead and say so. Never invent a
    celebrity, film or production number.
-10. why_ru — 2-4 short bullet reasons, concrete to THIS listing (price vs
+10. why_ru — 2-3 bullet reasons, each under 80 characters, concrete to THIS listing (price vs
     value, completeness, condition, rarity), no generic filler.
-11. checks_ru — 1-3 concrete things to verify before bidding (caseback number,
+11. checks_ru — 1-2 concrete things (each under 80 characters) to verify before bidding (caseback number,
     module, functions, plating, seller photos missing).
 12. value_low_eur / value_high_eur — realistic resale range; the
     estimated_market_value_eur is a point inside it.
@@ -109,8 +110,8 @@ EVALUATION RULES
      "condition": string,
      "fake_risk": "low" | "medium" | "high",
      "recommendation": "buy" | "watch" | "skip",
-     "reasoning": string,          (1-2 sentences, Russian: the verdict)
-     "display_name_ru": string,    (e.g. "Seiko A159-4019 в позолоченном корпусе")
+     "reasoning": string,          (one sentence, Russian: the verdict)
+     "display_name_ru": string,    (short, max 35 chars, e.g. "Seiko A159-4019 G")
      "era_ru": string,             (e.g. "1977" or "конец 1970-х")
      "value_low_eur": number,
      "value_high_eur": number,
