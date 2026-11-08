@@ -15,6 +15,7 @@ Site structure (kleinanzeigen.de):
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -69,6 +70,18 @@ class KleinanzeigenMarketplaceAdapter(MarketplacePort):
         self._http = http
         self._rate = rate_limiter
         self._pages = max(1, pages_per_query)
+        # Pause all Kleinanzeigen traffic after a 403/429 instead of retrying:
+        # retries only lengthen an IP block (the eBay HTML lesson).
+        self._blocked_until = 0.0
+        self._block_s = 600.0
+
+    def _blocked(self) -> bool:
+        return time.monotonic() < self._blocked_until
+
+    def _note_block(self, status: int) -> None:
+        self._blocked_until = time.monotonic() + self._block_s
+        log.warning("ka.blocked", status=status, pause_s=int(self._block_s))
+        self._block_s = min(self._block_s * 2, 3600.0)
 
     # ─── search ───────────────────────────────────────────────────────────
     async def search_auctions(
@@ -82,6 +95,9 @@ class KleinanzeigenMarketplaceAdapter(MarketplacePort):
         seen: set[str] = set()
         for keyword in query.keywords:
             for page in range(1, pages + 1):
+                if self._blocked():
+                    log.info("ka.scan.paused")
+                    return
                 async with self._rate:
                     html = await self._fetch_search_page(
                         keyword, page, query.max_price_eur
@@ -122,8 +138,12 @@ class KleinanzeigenMarketplaceAdapter(MarketplacePort):
             ):
                 with attempt:
                     async with self._http.session.get(url, headers=_BASE_HEADERS) as resp:
+                        if resp.status in (403, 429):
+                            self._note_block(resp.status)
+                            return ""
                         if resp.status >= 400:
                             raise RuntimeError(f"HTTP {resp.status}")
+                        self._block_s = 600.0
                         return await resp.text()
         except Exception as exc:
             log.warning("ka.fetch_failed", url=url, error=str(exc))
