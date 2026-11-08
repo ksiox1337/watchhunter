@@ -95,17 +95,27 @@ class EbayBrowseClient:
         ends_within_hours: int,
         max_price: float | None = None,
         price_currency: str = "EUR",
-        limit: int = 100,
+        limit: int = 200,
         offset: int = 0,
+        fixed_price: bool = False,
     ) -> dict[str, Any]:
-        """Call /buy/browse/v1/item_summary/search with auction-only filter."""
+        """Call /buy/browse/v1/item_summary/search.
+
+        Auctions: ending within the window, soonest first.
+        Fixed price (Buy It Now): newest listings first, no end-date window.
+        """
         token = await self._ensure_token()
 
         # See https://developer.ebay.com/api-docs/buy/browse/resources/item_summary/methods/search
-        filters = [
-            "buyingOptions:{AUCTION}",
-            f"itemEndDate:[..{_iso_offset(ends_within_hours)}]",
-        ]
+        if fixed_price:
+            filters = ["buyingOptions:{FIXED_PRICE}"]
+            sort = "newlyListed"
+        else:
+            filters = [
+                "buyingOptions:{AUCTION}",
+                f"itemEndDate:[..{_iso_offset(ends_within_hours)}]",
+            ]
+            sort = "endingSoonest"
         if max_price is not None:
             filters.append(f"price:[..{max_price}]")
             filters.append(f"priceCurrency:{price_currency}")
@@ -114,7 +124,7 @@ class EbayBrowseClient:
             "limit": min(limit, 200),
             "offset": offset,
             "filter": ",".join(filters),
-            "sort": "endingSoonest",
+            "sort": sort,
         }
         if category_id:
             params["category_ids"] = category_id

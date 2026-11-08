@@ -12,7 +12,7 @@ from watchhunter.application.ports.marketplace import (
 )
 from watchhunter.config.logging import get_logger
 from watchhunter.domain.exceptions import MarketplaceError
-from watchhunter.domain.models import Listing
+from watchhunter.domain.models import BuyingOption, Listing
 from watchhunter.infrastructure.ebay.client import EbayBrowseClient
 from watchhunter.infrastructure.ebay.currency import to_eur
 from watchhunter.infrastructure.ebay.mappers import parse_summary
@@ -29,7 +29,7 @@ class EbayApiMarketplaceAdapter(MarketplacePort):
         *,
         client: EbayBrowseClient,
         rate_limiter: RateLimiter,
-        page_size: int = 100,
+        page_size: int = 200,
         max_pages: int = 3,
     ) -> None:
         self._client = client
@@ -40,6 +40,10 @@ class EbayApiMarketplaceAdapter(MarketplacePort):
     async def fetch_gallery(
         self, listing: Listing, max_images: int
     ) -> tuple[str, ...]:
+        # Search summaries already carry image + additionalImages; only ask
+        # for the item when they gave fewer than we want.
+        if len(listing.image_urls) >= max_images:
+            return tuple(str(u) for u in listing.image_urls[:max_images])
         try:
             async with self._rate:
                 data = await self._client.get_item(
@@ -111,12 +115,14 @@ class EbayApiMarketplaceAdapter(MarketplacePort):
         self, query: MarketplaceQuery
     ) -> AsyncIterator[Listing]:
         seen: set[str] = set()
-        for keyword in query.keywords:
-            for page in range(self._max_pages):
+        fixed = query.buying_option == BuyingOption.FIXED_PRICE
+        pages = query.max_pages if query.max_pages is not None else self._max_pages
+        for q in _group_keywords(query.keywords):
+            for page in range(max(1, pages)):
                 async with self._rate:
                     payload = await self._client.search(
                         marketplace_id=query.marketplace.value,
-                        query=keyword,
+                        query=q,
                         category_id=query.category_id,
                         ends_within_hours=query.ends_within_hours,
                         max_price=(
@@ -127,15 +133,14 @@ class EbayApiMarketplaceAdapter(MarketplacePort):
                         price_currency="EUR",
                         limit=self._page_size,
                         offset=page * self._page_size,
+                        fixed_price=fixed,
                     )
                 items = payload.get("itemSummaries") or []
-                if not items:
-                    break
                 for item in items:
                     listing = parse_summary(item, query.marketplace)
                     if not listing:
                         continue
-                    if query.only_with_bids and listing.bid_count <= 0:
+                    if not fixed and query.only_with_bids and listing.bid_count <= 0:
                         continue
                     if listing.dedup_key in seen:
                         continue
@@ -148,3 +153,19 @@ class EbayApiMarketplaceAdapter(MarketplacePort):
             marketplace=query.marketplace.value,
             yielded=len(seen),
         )
+
+
+def _group_keywords(keywords: list[str]) -> list[str]:
+    """One-word keywords go into a single OR query: `(casio, seiko, pulsar)`.
+
+    The Browse API ORs comma-separated words in parentheses, which saves one
+    call per keyword against the 5000 calls/day quota. Multi-word phrases are
+    not ORed reliably by eBay, so each stays its own query.
+    """
+    words = [k.strip() for k in keywords if k.strip() and " " not in k.strip()]
+    phrases = [k.strip() for k in keywords if " " in k.strip()]
+    grouped: list[str] = []
+    for i in range(0, len(words), 10):
+        chunk = words[i : i + 10]
+        grouped.append(chunk[0] if len(chunk) == 1 else f"({', '.join(chunk)})")
+    return grouped + phrases

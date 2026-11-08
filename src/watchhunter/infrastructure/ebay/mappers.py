@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
 from watchhunter.config.logging import get_logger
-from watchhunter.domain.models import Listing, Marketplace
+from watchhunter.domain.models import BuyingOption, Listing, Marketplace
 from watchhunter.infrastructure.ebay.currency import to_eur
 
 log = get_logger(__name__)
@@ -28,7 +28,8 @@ def parse_summary(
         if not url or not title:
             return None
 
-        price_obj = item.get("price") or {}
+        # Auctions carry the live bid in currentBidPrice and often no `price`.
+        price_obj = item.get("currentBidPrice") or item.get("price") or {}
         price_val = price_obj.get("value")
         currency = (price_obj.get("currency") or "USD").upper()
         if price_val is None:
@@ -36,10 +37,27 @@ def parse_summary(
         current_price = Decimal(str(price_val))
 
         bid_count = int(item.get("bidCount") or 0)
+        options = item.get("buyingOptions") or []
+        buying_option = (
+            BuyingOption.AUCTION if "AUCTION" in options else BuyingOption.FIXED_PRICE
+        )
         end_time_str = item.get("itemEndDate")
-        if not end_time_str:
+        if end_time_str:
+            end_time = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
+        elif buying_option == BuyingOption.FIXED_PRICE:
+            # Buy It Now has no meaningful end; same convention as the HTML adapter.
+            end_time = datetime.now(timezone.utc) + timedelta(days=365)
+        else:
             return None
-        end_time = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
+
+        shipping_eur: Decimal | None = None
+        for opt in item.get("shippingOptions") or []:
+            cost = opt.get("shippingCost") if isinstance(opt, dict) else None
+            if isinstance(cost, dict) and cost.get("value") is not None:
+                shipping_eur = to_eur(
+                    Decimal(str(cost["value"])), (cost.get("currency") or currency).upper()
+                )
+                break
 
         images: list[str] = []
         primary = (item.get("image") or {}).get("imageUrl")
@@ -62,6 +80,8 @@ def parse_summary(
             bid_count=bid_count,
             end_time=end_time,
             image_urls=tuple(images),  # type: ignore[arg-type]
+            buying_option=buying_option,
+            shipping_cost_eur=shipping_eur,
         )
     except Exception as exc:
         log.warning("ebay.mapper.skip", error=str(exc), item_id=item.get("itemId"))
