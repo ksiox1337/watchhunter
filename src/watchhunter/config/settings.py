@@ -148,6 +148,8 @@ class Settings(BaseSettings):
     # ─── Telegram ──────────────────────────────────────────────────────────
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    # Times in notifications (auction end) are shown in this zone.
+    timezone: str = "Europe/Berlin"
 
     # ─── App ───────────────────────────────────────────────────────────────
     database_url: str = "sqlite+aiosqlite:///./data/watchhunter.db"

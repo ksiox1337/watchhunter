@@ -45,6 +45,14 @@ class WatchEvaluation(BaseModel):
     fake_risk: FakeRisk
     recommendation: Recommendation
     reasoning: str
+    # Presentation fields (Russian). Optional so older stored evaluations load.
+    display_name: str = ""
+    era: str = ""
+    value_low_eur: Decimal | None = None
+    value_high_eur: Decimal | None = None
+    story: str = ""
+    why: tuple[str, ...] = ()
+    checks: tuple[str, ...] = ()
     raw_response: dict[str, Any] = Field(default_factory=dict)
 
     @property
@@ -53,3 +61,26 @@ class WatchEvaluation(BaseModel):
             self.recommendation != Recommendation.SKIP
             and self.interesting
         )
+
+
+def presentation_fields(raw: dict[str, Any]) -> dict[str, Any]:
+    """Russian presentation fields from a stored/LLM raw response (missing → defaults)."""
+
+    def dec(value: Any) -> Decimal | None:
+        try:
+            return Decimal(str(value)) if value is not None else None
+        except ArithmeticError:
+            return None
+
+    def items(key: str) -> tuple[str, ...]:
+        return tuple(str(x).strip() for x in raw.get(key) or [] if str(x).strip())
+
+    return {
+        "display_name": str(raw.get("display_name_ru") or ""),
+        "era": str(raw.get("era_ru") or ""),
+        "value_low_eur": dec(raw.get("value_low_eur")),
+        "value_high_eur": dec(raw.get("value_high_eur")),
+        "story": str(raw.get("story_ru") or ""),
+        "why": items("why_ru"),
+        "checks": items("checks_ru"),
+    }

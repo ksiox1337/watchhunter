@@ -292,4 +292,4 @@ def _build_notifier(settings: Settings, http: HttpClient) -> NotifierPort:
         chat_id=settings.telegram_chat_id,
         http=http,
     )
-    return TelegramNotifierAdapter(client=client)
+    return TelegramNotifierAdapter(client=client, timezone=settings.timezone)

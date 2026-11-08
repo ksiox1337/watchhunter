@@ -48,14 +48,31 @@ class TelegramBotClient:
         }
         await self._post("/sendPhoto", payload)
 
-    async def send_message(self, *, text: str, parse_mode: str = "HTML") -> None:
-        payload: dict[str, Any] = {
-            "chat_id": self._chat_id,
-            "text": text[:4096],
-            "disable_web_page_preview": False,
-        }
+    async def send_message(
+        self,
+        *,
+        text: str,
+        parse_mode: str = "HTML",
+        preview_url: str | None = None,
+        button: tuple[str, str] | None = None,
+    ) -> None:
+        """Send text. `preview_url` shows that image as a large preview above
+        the text; `button` is an inline (label, url) button under the message."""
+        payload: dict[str, Any] = {"chat_id": self._chat_id, "text": text[:4096]}
         if parse_mode:
             payload["parse_mode"] = parse_mode
+        if preview_url:
+            payload["link_preview_options"] = {
+                "url": preview_url,
+                "prefer_large_media": True,
+                "show_above_text": True,
+            }
+        else:
+            payload["link_preview_options"] = {"is_disabled": True}
+        if button:
+            payload["reply_markup"] = {
+                "inline_keyboard": [[{"text": button[0], "url": button[1]}]]
+            }
         await self._post("/sendMessage", payload)
 
     async def _post(self, path: str, payload: dict[str, Any]) -> None:

@@ -19,7 +19,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "RUF"]
-ignore = ["E501"]
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]  # Cyrillic text in prompts and messages
 
 [tool.mypy]
 python_version = "3.12"

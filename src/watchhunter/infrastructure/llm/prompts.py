@@ -77,9 +77,24 @@ EVALUATION RULES
                 upside, or unidentifiable junk.
 7. Be aggressive with fake_risk on Casio AX-210, Seiko 0674, Pulsar — these
    are routinely faked or franken-assembled.
-8. Output STRICT JSON. No prose, no markdown. The JSON object MUST include
-   ALL these keys (use null/empty string ONLY if truly unknown — prefer your
-   best guess with low confidence):
+8. Write for a Russian-speaking collector: every free-text field below
+   (condition, reasoning, display_name_ru, era_ru, story_ru, why_ru, checks_ru)
+   is in RUSSIAN; keep model numbers and brand names as they are.
+9. story_ru — 2-4 sentences on what this watch is and why collectors care:
+   the line/module and its place in watch history, notable firsts, famous
+   wearers or film appearances (e.g. Seiko M354/0674 "James Bond", H558
+   "Arnie"). ONLY facts you are sure of. If you are not sure about this exact
+   model, describe the family or era instead and say so. Never invent a
+   celebrity, film or production number.
+10. why_ru — 2-4 short bullet reasons, concrete to THIS listing (price vs
+    value, completeness, condition, rarity), no generic filler.
+11. checks_ru — 1-3 concrete things to verify before bidding (caseback number,
+    module, functions, plating, seller photos missing).
+12. value_low_eur / value_high_eur — realistic resale range; the
+    estimated_market_value_eur is a point inside it.
+13. Output STRICT JSON. No prose, no markdown. The JSON object MUST include
+   ALL these keys (use empty string / empty array ONLY if truly unknown —
+   prefer your best guess with low confidence):
 
    {
      "interesting": boolean,
@@ -94,7 +109,14 @@ EVALUATION RULES
      "condition": string,
      "fake_risk": "low" | "medium" | "high",
      "recommendation": "buy" | "watch" | "skip",
-     "reasoning": string
+     "reasoning": string,          (1-2 sentences, Russian: the verdict)
+     "display_name_ru": string,    (e.g. "Seiko A159-4019 в позолоченном корпусе")
+     "era_ru": string,             (e.g. "1977" or "конец 1970-х")
+     "value_low_eur": number,
+     "value_high_eur": number,
+     "story_ru": string,
+     "why_ru": [string],
+     "checks_ru": [string]
    }
 """
 
@@ -116,6 +138,13 @@ RESPONSE_SCHEMA: dict = {
         "fake_risk": {"type": "string", "enum": ["low", "medium", "high"]},
         "recommendation": {"type": "string", "enum": ["buy", "watch", "skip"]},
         "reasoning": {"type": "string"},
+        "display_name_ru": {"type": "string"},
+        "era_ru": {"type": "string"},
+        "value_low_eur": {"type": "number"},
+        "value_high_eur": {"type": "number"},
+        "story_ru": {"type": "string"},
+        "why_ru": {"type": "array", "items": {"type": "string"}},
+        "checks_ru": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
         "interesting",
@@ -131,6 +160,13 @@ RESPONSE_SCHEMA: dict = {
         "fake_risk",
         "recommendation",
         "reasoning",
+        "display_name_ru",
+        "era_ru",
+        "value_low_eur",
+        "value_high_eur",
+        "story_ru",
+        "why_ru",
+        "checks_ru",
     ],
 }
 

@@ -18,6 +18,7 @@ from watchhunter.domain.evaluation import (
     RarityLevel,
     Recommendation,
     WatchEvaluation,
+    presentation_fields,
 )
 from watchhunter.domain.exceptions import AnalyzerError, BudgetExhaustedError
 from watchhunter.domain.models import Listing
@@ -209,7 +210,9 @@ def _to_evaluation(raw: dict[str, Any]) -> WatchEvaluation:
             fake_risk=FakeRisk(str(raw["fake_risk"]).lower()),
             recommendation=Recommendation(str(raw["recommendation"]).lower()),
             reasoning=str(raw.get("reasoning") or ""),
+            **presentation_fields(raw),
             raw_response=raw,
         )
     except (KeyError, ValueError) as exc:
         raise AnalyzerError(f"Malformed evaluation: {exc}") from exc
+

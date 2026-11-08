@@ -15,6 +15,7 @@ from watchhunter.domain.evaluation import (
     RarityLevel,
     Recommendation,
     WatchEvaluation,
+    presentation_fields,
 )
 from watchhunter.domain.models import Listing, Marketplace
 from watchhunter.infrastructure.persistence.database import Database
@@ -61,6 +62,7 @@ def _row_to_eval(row: EvaluationRow) -> WatchEvaluation:
         fake_risk=FakeRisk(row.fake_risk),
         recommendation=Recommendation(row.recommendation),
         reasoning=row.reasoning,
+        **presentation_fields(row.raw_response or {}),
         raw_response=row.raw_response or {},
     )
 
