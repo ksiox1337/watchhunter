@@ -336,3 +336,49 @@ SCREEN_SCHEMA: dict = {
         "reasoning",
     ],
 }
+
+
+# ─── Two-step evaluation ──────────────────────────────────────────────────
+# Step 1 (every listing): the verdict only, short.  Step 2 (finds only): the
+# Russian card text.  Most evaluated listings are rejected, so step 2's ~300
+# output tokens are only paid for the few that are sent.
+_CARD_FIELDS = (
+    "display_name_ru",
+    "era_ru",
+    "rarity_note_ru",
+    "value_low_eur",
+    "value_high_eur",
+    "story_ru",
+    "why_ru",
+    "checks_ru",
+)
+
+VERDICT_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        k: v for k, v in RESPONSE_SCHEMA["properties"].items() if k not in _CARD_FIELDS
+    },
+    "required": [k for k in RESPONSE_SCHEMA["required"] if k not in _CARD_FIELDS],
+}
+
+CARD_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {k: RESPONSE_SCHEMA["properties"][k] for k in _CARD_FIELDS},
+    "required": list(_CARD_FIELDS),
+}
+
+VERDICT_SUFFIX = (
+    "\n\nSTEP 1 of 2 — VERDICT: return ONLY the verdict fields of the schema. "
+    "condition and reasoning: at most 15 words each, in Russian."
+)
+
+CARD_SUFFIX = (
+    "\n\nSTEP 2 of 2 — CARD: the verdict is already decided (given below). "
+    "Return ONLY the card fields of the schema, in Russian, consistent with it."
+)
+
+
+def build_card_prompt(user_prompt: str, verdict_json: str) -> str:
+    return f"{user_prompt}\n\nVerdict (step 1): {verdict_json}"

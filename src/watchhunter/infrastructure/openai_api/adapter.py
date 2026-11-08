@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import json
 from decimal import Decimal
 from typing import Any
 
@@ -24,6 +25,8 @@ from watchhunter.domain.exceptions import AnalyzerError, BudgetExhaustedError
 from watchhunter.domain.models import Listing
 from watchhunter.infrastructure.http.client import HttpClient
 from watchhunter.infrastructure.llm.prompts import (
+    CARD_SCHEMA,
+    CARD_SUFFIX,
     RESPONSE_SCHEMA,
     SCREEN_SCHEMA,
     SCREEN_SUFFIX,
@@ -31,6 +34,9 @@ from watchhunter.infrastructure.llm.prompts import (
     TRIAGE_BATCH_SCHEMA,
     TRIAGE_INSTRUCTION,
     TRIAGE_SCHEMA,
+    VERDICT_SCHEMA,
+    VERDICT_SUFFIX,
+    build_card_prompt,
     build_triage_batch_prompt,
     build_triage_prompt,
     build_user_prompt,
@@ -55,6 +61,7 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
         triage_batch_size: int = 25,
         screen_model: str = "",
         screen_pass_score: int = 50,
+        card_min_score: int | None = None,
     ) -> None:
         self._client = client
         self._http = http
@@ -68,6 +75,10 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
         # >= screen_pass_score (and doesn't skip) get the full evaluation.
         self._screen_model = screen_model
         self._screen_pass = screen_pass_score
+        # Two-step evaluation: verdict for every listing, Russian card text
+        # only when the verdict could be sent (score >= card_min_score, not
+        # skip). None = one combined call (old behaviour).
+        self._card_min = card_min_score
 
     # ─── triage: one listing ─────────────────────────────────────────────
     async def triage(self, listing: Listing) -> TriageResult:
@@ -157,7 +168,7 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
 
         if self._screen_model:
             screen = await self._with_image_fallback(
-                lambda u: self._evaluate_call(text, u, screen=True), urls
+                lambda u: self._evaluate_call(text, u, mode="screen"), urls
             )
             score = int(screen.get("score") or 0)
             if screen.get("recommendation") == "skip" or score < self._screen_pass:
@@ -169,8 +180,27 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
                 )
                 return _from_screen(screen, listing)
 
-        raw = await self._with_image_fallback(lambda u: self._evaluate_call(text, u), urls)
-        return _to_evaluation(raw)
+        if self._card_min is None:
+            raw = await self._with_image_fallback(
+                lambda u: self._evaluate_call(text, u, mode="full"), urls
+            )
+            return _to_evaluation(raw)
+
+        verdict = await self._with_image_fallback(
+            lambda u: self._evaluate_call(text, u, mode="verdict"), urls
+        )
+        score = int(verdict.get("score") or 0)
+        if verdict.get("recommendation") != "skip" and score >= self._card_min:
+            card_text = build_card_prompt(text, json.dumps(verdict, ensure_ascii=False))
+            try:
+                card = await self._with_image_fallback(
+                    lambda u: self._evaluate_call(card_text, u, mode="card"), urls
+                )
+                verdict = {**verdict, **card}
+            except AnalyzerError as exc:
+                # The find still goes out, just with a plainer card.
+                log.warning("eval.card_failed", error=str(exc)[:200])
+        return _to_evaluation(verdict)
 
     async def _with_image_fallback(self, call: Any, urls: list[str]) -> dict[str, Any]:
         # Fast path: hand OpenAI the public image URLs, no download on our side.
@@ -187,8 +217,15 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
                 raise AnalyzerError(f"OpenAI evaluation failed: {exc2}") from exc2
 
     async def _evaluate_call(
-        self, text: str, image_urls: list[str], *, screen: bool = False
+        self, text: str, image_urls: list[str], *, mode: str = "full"
     ) -> dict[str, Any]:
+        """mode: full | verdict | card | screen (see the schemas in llm/prompts.py)."""
+        suffix, name, schema, out = {
+            "full": ("", "watch_evaluation", RESPONSE_SCHEMA, 600),
+            "verdict": (VERDICT_SUFFIX, "watch_verdict", VERDICT_SCHEMA, 250),
+            "card": (CARD_SUFFIX, "watch_card", CARD_SCHEMA, 350),
+            "screen": (SCREEN_SUFFIX, "watch_screen", SCREEN_SCHEMA, 120),
+        }[mode]
         content: list[dict[str, Any]] = [{"type": "text", "text": text}]
         content += [
             {"type": "image_url", "image_url": {"url": u, "detail": self._image_detail}}
@@ -196,12 +233,12 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
         ]
         async with self._rate:
             return await self._client.generate_json(
-                system_instruction=SYSTEM_INSTRUCTION + (SCREEN_SUFFIX if screen else ""),
+                system_instruction=SYSTEM_INSTRUCTION + suffix,
                 user_content=content,
-                schema_name="watch_screen" if screen else "watch_evaluation",
-                response_schema=SCREEN_SCHEMA if screen else RESPONSE_SCHEMA,
-                model=self._screen_model if screen else None,
-                est_output_tokens=120 if screen else 600,
+                schema_name=name,
+                response_schema=schema,
+                model=self._screen_model if mode == "screen" else None,
+                est_output_tokens=out,
                 image_count=len(image_urls),
                 image_detail=self._image_detail,
             )

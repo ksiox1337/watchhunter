@@ -270,6 +270,7 @@ def _build_analyzer(
         triage_batch_size=settings.triage_batch_size,
         screen_model=settings.openai_screen_model,
         screen_pass_score=max(0, settings.min_score - settings.screen_margin),
+        card_min_score=settings.min_score if settings.two_step_eval else None,
     )
     if settings.triage_provider.lower().strip() != "jev":
         return openai_analyzer

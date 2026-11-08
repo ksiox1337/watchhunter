@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     openai_screen_model: str = ""  # e.g. gpt-5-nano; off: it dropped 10 of 16 good finds in a test
     # Listings the screen scores below MIN_SCORE - margin never get the full eval.
     screen_margin: int = 10
+    # Verdict first, Russian card text only for listings that will be sent.
+    two_step_eval: bool = True
     # gpt-5 family only: "minimal" | "low" | "medium" | "high". Minimal = fastest, cheapest.
     openai_reasoning_effort: str = "minimal"
     # "low" = fixed ~85 tokens/image; "high"/"auto" tile the image (more tokens, finer detail).
