@@ -144,5 +144,5 @@ class FeedbackRow(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     evaluation_id: Mapped[int] = mapped_column(Integer, index=True)
-    action: Mapped[str] = mapped_column(String(16))  # like | dislike | bought
+    action: Mapped[str] = mapped_column(String(16))  # like | pricey | dislike | bought
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

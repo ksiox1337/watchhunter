@@ -208,7 +208,9 @@ def _risk(r: FakeRisk) -> str:
     return _RISK.get(r.value, r.value)
 
 
-FEEDBACK = {"like": "👍", "dislike": "👎", "bought": "💰"}
+# like = want it; pricey = the watch is right but the price isn't;
+# dislike = not my thing; bought = would buy at this price.
+FEEDBACK = {"like": "👍", "pricey": "💸", "dislike": "👎", "bought": "💰"}
 
 
 def card_keyboard(

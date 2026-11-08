@@ -78,7 +78,10 @@ async def main(n: int) -> None:
         saved_card_min = analyzer._card_min
         analyzer._card_min = 101  # verdict only: no card step, no web search
         await c.notifier._client.send_message(  # type: ignore[attr-defined]
-            text=f"<b>Разметка: {len(chosen)} лотов</b>\nОцени каждый: 👍 интересно · 👎 мимо · 💰 купил бы"
+            text=(
+                f"<b>Разметка: {len(chosen)} лотов</b>\n"
+                "👍 интересно · 💸 часы норм, цена плохая · 👎 мимо · 💰 купил бы"
+            )
         )
         sem = asyncio.Semaphore(6)
 
