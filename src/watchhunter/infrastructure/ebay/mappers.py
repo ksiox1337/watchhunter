@@ -50,6 +50,11 @@ def parse_summary(
         else:
             return None
 
+        created = item.get("itemCreationDate")
+        listed_at = (
+            datetime.fromisoformat(created.replace("Z", "+00:00")) if created else None
+        )
+
         shipping_eur: Decimal | None = None
         for opt in item.get("shippingOptions") or []:
             cost = opt.get("shippingCost") if isinstance(opt, dict) else None
@@ -82,6 +87,7 @@ def parse_summary(
             image_urls=tuple(images),  # type: ignore[arg-type]
             buying_option=buying_option,
             shipping_cost_eur=shipping_eur,
+            listed_at=listed_at,
         )
     except Exception as exc:
         log.warning("ebay.mapper.skip", error=str(exc), item_id=item.get("itemId"))

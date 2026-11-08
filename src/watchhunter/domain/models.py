@@ -43,6 +43,8 @@ class Listing(BaseModel):
     # Best-effort shipping cost in EUR; None when not parseable.
     # 0 means explicitly free shipping ("Kostenloser Versand" / "Free shipping").
     shipping_cost_eur: Decimal | None = None
+    # When the seller listed it (eBay API itemCreationDate); None if unknown.
+    listed_at: datetime | None = None
 
     @property
     def hours_until_end(self) -> float:

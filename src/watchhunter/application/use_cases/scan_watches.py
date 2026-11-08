@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from watchhunter.application.ports.analyzer import AnalyzerPort
@@ -20,6 +21,17 @@ from watchhunter.domain.exceptions import AnalyzerError, MarketplaceError
 from watchhunter.domain.models import BuyingOption, Listing, Marketplace
 
 log = get_logger(__name__)
+
+# Fresh-only mode: a listing with a known listing time counts as new while it
+# is younger than this. Restarts then never swallow new listings.
+FRESH_WINDOW = timedelta(minutes=60)
+
+
+def _is_fresh(listing: Listing) -> bool | None:
+    """True/False when the listing time is known, None when it isn't."""
+    if listing.listed_at is None:
+        return None
+    return datetime.now(timezone.utc) - listing.listed_at < FRESH_WINDOW
 
 
 class ScanWatchesUseCase:
@@ -206,6 +218,8 @@ class ScanWatchesUseCase:
                         if listing.external_id in seen:
                             continue
                         seen.add(listing.external_id)
+                        if _is_fresh(listing):
+                            continue  # listed recently: leave it for the next scan
                         if await self._repo.was_ever_seen(listing.external_id):
                             continue
                         await self._repo.upsert_listing(listing)
@@ -235,7 +249,10 @@ class ScanWatchesUseCase:
             ):
                 stats["triaged_out"] += 1
                 return False
-            # Fresh-only mode (BIN): if we've ever seen it, it wasn't a steal.
+            # Fresh-only mode (BIN): old listings and ones we've seen aren't steals.
+            if self._only_new and _is_fresh(listing) is False:
+                stats["already_notified"] += 1
+                return False
             if self._only_new and await self._repo.was_ever_seen(listing.external_id):
                 stats["already_notified"] += 1
                 return False
