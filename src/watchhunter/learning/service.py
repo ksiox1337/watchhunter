@@ -39,7 +39,7 @@ class TasteService:
             return ev
         p = self._model.predict(listing, ev)
         explore = p < self.threshold and self._rng.random() < self._explore
-        raw = {**ev.raw_response, "taste": {"p": round(p, 3), "explore": explore}}
+        raw = {**ev.raw_response, "taste": {"p": round(float(p), 3), "explore": bool(explore)}}
         return ev.model_copy(update={"taste": p, "explore": explore, "raw_response": raw})
 
     async def retrain(self) -> None:

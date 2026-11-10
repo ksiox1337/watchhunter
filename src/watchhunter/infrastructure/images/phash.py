@@ -72,7 +72,7 @@ class PhotoIndex:
             for other_id, other_url, other in known:
                 if other_id == external_id:
                     continue
-                d = h - other
+                d = int(h - other)
                 if d <= MAX_DISTANCE and (best is None or d < best.distance):
                     best = PhotoMatch(other_id, other_url, d)
             if all(k[0] != external_id for k in known):
