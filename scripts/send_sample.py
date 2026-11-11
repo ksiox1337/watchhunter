@@ -34,6 +34,9 @@ async def main(item: str) -> None:
             buying_option=BuyingOption.AUCTION if r.bid_count or r.end_time.year < 2027 else BuyingOption.FIXED_PRICE,
         )
         state = await c.marketplace.refresh_state(listing)
+        if getattr(state, "gone", False) or listing.hours_until_end <= 0:
+            print("listing has ended, not sending")
+            return
         listing = listing.model_copy(update={
             "current_price_eur": state.price_eur or listing.current_price_eur,
             "shipping_cost_eur": state.shipping_eur,
