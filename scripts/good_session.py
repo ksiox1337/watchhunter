@@ -54,7 +54,7 @@ async def main(n: int) -> None:
         good = good[:n]
         print(f"good {len(good)}")
         await c.notifier._client.send_message(  # type: ignore[attr-defined]
-            text=f"<b>Лучшее по мнению бота: {len(good)} лотов</b>\n👍 · 💸 · 👎 · 💰 — как обычно"
+            text=f"<b>Best picks by the bot: {len(good)} listings</b>\n👍 · 💸 · 👎 · 💰 as usual"
         )
         for lst, ev in good:
             ev = ev.model_copy(update={"raw_response": {**ev.raw_response, "labeling": True}})

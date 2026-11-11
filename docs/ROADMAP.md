@@ -36,7 +36,7 @@ references and guessed for the rest.
    identifies brand + model, search the same reference on EBAY_DE/US/UK/FR/IT
    and take the median asking price of comparable listings (same condition
    class, excluding parts lots). Show it next to the model's estimate:
-   `Рынок 150–320 € · сейчас на eBay: 12 шт., медиана 189 €`.
+   `Market €150–320 · on eBay now: 12 listings, median €189`.
 2. **Our own sold-price dataset, for free.** Every auction we evaluate ends.
    After `end_time`, read the item once more (`get_item`): the final price is
    a real sale. Store it with the model's estimate. This gives
@@ -53,12 +53,12 @@ estimate error on ended auctions.
 
 ## Phase 2 — Learns from you
 
-5. **Telegram buttons** under each card: 👍 интересно · 👎 мимо · 💰 купил.
+5. **Telegram buttons** under each card: 👍 interesting · 💸 right watch, wrong price · 👎 not for me · 💰 would buy.
    Stored as labels per listing.
 6. **Use the labels:** few-shot examples in the triage/eval prompts (your last
    good and bad finds), and automatic tuning of `JEV_THRESHOLD` and
    `MIN_SCORE` to hit a target of N good alerts per day.
-7. **Watchlist / snipe reminder:** "напомнить за 10 минут" button; re-checks
+7. **Watchlist / snipe reminder:** "remind me 10 minutes before" button; re-checks
    price before the reminder and drops it if it ran past your limit.
 
 ## Phase 3 — More supply

@@ -57,16 +57,16 @@ class TasteService:
         likes, dislikes = model.top_terms(6)
         log.info("taste.retrained", n=model.n, positives=model.positives, auc=round(model.auc or 0, 3))
         if self._report:
-            change = f" (было {old_auc:.2f})" if old_auc else ""
+            change = f" (was {old_auc:.2f})" if old_auc else ""
             await self._report(  # type: ignore[operator]
-                "<b>🎓 Модель вкуса дообучилась</b>\n"
-                f"Оценок: {model.n}, из них «те самые»: {model.positives}\n"
-                f"Модель: {model.kind} (AUC: "
+                "<b>🎓 Taste model retrained</b>\n"
+                f"Ratings: {model.n}, positive: {model.positives}\n"
+                f"Model: {model.kind} (AUC: "
                 + ", ".join(f"{k} {v:.2f}" for k, v in (model.candidates or {}).items())
                 + ")\n"
-                f"Качество (AUC): {model.auc:.2f}{change}\n"
-                f"При пороге {round(self.threshold * 100)}%: из присланного понравилось бы {prec:.0%}, "
-                f"находится {int(y[sel].sum())} из {int(y.sum())}\n"
-                f"Тянет к: {', '.join(likes)}"
-                + (f"\nОтталкивает: {', '.join(dislikes)}" if dislikes else "")
+                f"Quality (AUC): {model.auc:.2f}{change}\n"
+                f"At threshold {round(self.threshold * 100)}%: {prec:.0%} of sent cards would be liked, "
+                f"finds {int(y[sel].sum())} of {int(y.sum())}\n"
+                f"Likes: {', '.join(likes)}"
+                + (f"\nDislikes: {', '.join(dislikes)}" if dislikes else "")
             )

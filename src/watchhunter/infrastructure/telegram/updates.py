@@ -49,7 +49,7 @@ class TelegramUpdates:
             return
         async with self._db.session() as s:
             s.add(FeedbackRow(evaluation_id=int(ev_id), action=action, created_at=datetime.now(timezone.utc)))
-        await self._client.answer_callback(cq["id"], f"Записал {FEEDBACK[action]}")
+        await self._client.answer_callback(cq["id"], f"Saved {FEEDBACK[action]}")
         rows = (msg.get("reply_markup") or {}).get("inline_keyboard") or []
         rows = [r for r in rows if not any(str(b.get("callback_data", "")).startswith("fb:") for b in r)]
         rows.append(feedback_row(int(ev_id), action))
@@ -77,10 +77,10 @@ class TelegramUpdates:
             )
         fb_line = " ".join(f"{FEEDBACK[a]} {fb.get(a, 0)}" for a in FEEDBACK)
         return (
-            "<b>WatchHunter · последние 24 ч</b>\n"
-            f"Оценено по фото: {evals}\n"
-            f"Отправлено находок: {sent}\n"
-            f"Расход на модели: ${float(cost):.3f}\n\n"
-            f"<b>История продаж</b>\nОтслеживается аукционов: {tracked}, закрыто продаж: {closed}\n\n"
-            f"<b>Твои оценки</b>: {fb_line}"
+            "<b>WatchHunter · last 24 h</b>\n"
+            f"Evaluated from photos: {evals}\n"
+            f"Finds sent: {sent}\n"
+            f"Model spend: ${float(cost):.3f}\n\n"
+            f"<b>Sales history</b>\nAuctions tracked: {tracked}, sales closed: {closed}\n\n"
+            f"<b>Your ratings</b>: {fb_line}"
         )

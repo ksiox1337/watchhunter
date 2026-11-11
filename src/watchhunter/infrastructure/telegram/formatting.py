@@ -1,4 +1,4 @@
-"""Telegram card for one find: big photo, Russian caption of 4-5 lines,
+"""Telegram card for one find: big photo, short caption of 4-5 lines,
 reasons / story / checks in a collapsed quote, and an inline eBay button."""
 
 from __future__ import annotations
@@ -13,25 +13,25 @@ from watchhunter.domain.evaluation import FakeRisk, RarityLevel, Recommendation
 from watchhunter.domain.models import BuyingOption, Marketplace
 
 _VERDICT = {
-    Recommendation.BUY: "🟢 <b>ПОКУПАТЬ</b>",
-    Recommendation.WATCH: "🟡 <b>ПРИСМОТРЕТЬСЯ</b>",
-    Recommendation.SKIP: "⚪️ <b>ПРОПУСТИТЬ</b>",
+    Recommendation.BUY: "🟢 <b>BUY</b>",
+    Recommendation.WATCH: "🟡 <b>WATCH</b>",
+    Recommendation.SKIP: "⚪️ <b>SKIP</b>",
 }
-_LEVEL = {"low": "низкая", "medium": "средняя", "high": "высокая", "very_high": "грааль"}
+_LEVEL = {"low": "low", "medium": "medium", "high": "high", "very_high": "grail"}
 _RARITY = {
-    "low": "⚪️ Редкость: массовые",
-    "medium": "🔹 Редкость: нечастые",
-    "high": "💎 Редкость: редкие",
-    "very_high": "💎💎 Редкость: грааль",
+    "low": "⚪️ Rarity: common",
+    "medium": "🔹 Rarity: uncommon",
+    "high": "💎 Rarity: rare",
+    "very_high": "💎💎 Rarity: grail",
 }
-_RISK = {"low": "низкий", "medium": "средний", "high": "высокий"}
+_RISK = {"low": "low", "medium": "medium", "high": "high"}
 _SOURCE = {
     Marketplace.KLEINANZEIGEN: "Kleinanzeigen",
 }
 
 
 def money(value: Decimal | None, *, sign: bool = False) -> str:
-    """1234.5 → '1 234,50 €' (Russian style, no decimals for round euros ≥ 100)."""
+    """1234.5 → '1 234,50 €' (no decimals for round euros ≥ 100)."""
     if value is None:
         return "—"
     v = Decimal(value)
@@ -41,25 +41,24 @@ def money(value: Decimal | None, *, sign: bool = False) -> str:
     else:
         v = v.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         body = f"{abs(v):,.2f}"
-    body = body.replace(",", " ").replace(".", ",")
     prefix = ("+" if v > 0 else "−" if v < 0 else "") if sign else ("−" if v < 0 else "")
-    return f"{prefix}{body} €"
+    return f"{prefix}€{body}"
 
 
 def _time_left(end: datetime, now: datetime) -> str:
     minutes = int((end - now).total_seconds() // 60)
     if minutes <= 0:
-        return "завершён"
+        return "ended"
     h, m = divmod(minutes, 60)
     if h >= 48:
-        return f"через {h // 24} дн"
-    return f"через {h} ч {m} мин" if h else f"через {m} мин"
+        return f"in {h // 24} d"
+    return f"in {h} h {m} min" if h else f"in {m} min"
 
 
 def _end_label(end: datetime, now: datetime, tz: ZoneInfo) -> str:
     local_end, local_now = end.astimezone(tz), now.astimezone(tz)
     days = (local_end.date() - local_now.date()).days
-    day = {0: "сегодня", 1: "завтра"}.get(days, local_end.strftime("%d.%m"))
+    day = {0: "today", 1: "tomorrow"}.get(days, local_end.strftime("%b %d"))
     return f"{day} {local_end:%H:%M} · {_time_left(end, now)}"
 
 
@@ -82,12 +81,12 @@ def format_card(
     now = now or datetime.now(timezone.utc)
     is_bin = listing.buying_option == BuyingOption.FIXED_PRICE
 
-    kind = "Купить сейчас" if is_bin else "Аукцион"
+    kind = "Buy It Now" if is_bin else "Auction"
     head = f"{_VERDICT.get(ev.recommendation, '')} · {kind} · <b>{ev.score}</b>/100"
     if ev.taste is not None:
         head += f" · 🎯 {round(ev.taste * 100)}%"
     if ev.explore:
-        head = "🎓 <i>для обучения</i> · " + head
+        head = "🎓 <i>for training</i> · " + head
     name = ev.display_name or f"{ev.brand} {ev.model}".strip()
     title = f"<b>{html.escape(name)}</b>"
     if ev.era:
@@ -101,7 +100,7 @@ def format_card(
 
     price_line = f"💶 <b>{money(price)}</b>"
     if shipping is not None:
-        price_line += " + доставка бесплатно" if shipping == 0 else f" + {money(shipping)} доставка"
+        price_line += " + free shipping" if shipping == 0 else f" + {money(shipping)} shipping"
     if not is_bin:
         price_line += f" · {_bids(listing.bid_count)}"
 
@@ -111,8 +110,8 @@ def format_card(
         if low is not None and high is not None and 0 < low <= high
         else f"≈ {money(mid)}"
     )
-    multiple = f" (×{(mid / total):.1f})".replace(".", ",") if total > 0 and profit > 0 else ""
-    value_line = f"📈 Рынок {market} → <b>{money(profit, sign=True)}</b>{multiple}"
+    multiple = f" (×{(mid / total):.1f})" if total > 0 and profit > 0 else ""
+    value_line = f"📈 Market {market} → <b>{money(profit, sign=True)}</b>{multiple}"
 
     rarity_line = _RARITY.get(ev.rarity.value, "")
     if ev.rarity_note:
@@ -121,17 +120,17 @@ def format_card(
     lines = [head, title, rarity_line, "", price_line, value_line]
     if ev.web_examples and ev.web_low_eur and ev.web_high_eur:
         lines.append(
-            f"🔎 Продано в сети: {_short(ev.web_low_eur)}–{money(ev.web_high_eur)}"
-            f" ({ev.web_examples} прим.)"
+            f"🔎 Sold online: {_short(ev.web_low_eur)}–{money(ev.web_high_eur)}"
+            f" ({ev.web_examples} examples)"
         )
     if ev.sales_sold:
         lines.append(
-            f"📊 Наши данные: {_plural(ev.sales_sold, 'продажа', 'продажи', 'продаж')} за 90 дн., "
-            f"медиана {money(ev.sales_median_eur)}"
+            f"📊 Our data: {_plural(ev.sales_sold, 'sale', 'sales')} in 90 days, "
+            f"median {money(ev.sales_median_eur)}"
         )
     if ev.photo_seen_url:
         lines.append(
-            f'📸 <a href="{html.escape(ev.photo_seen_url)}">Это фото уже было в другом объявлении</a>'
+            f'📸 <a href="{html.escape(ev.photo_seen_url)}">This photo was seen in another listing</a>'
         )
     if not is_bin:
         lines.append(f"⏳ {_end_label(listing.end_time, now, tz)}")
@@ -140,21 +139,21 @@ def format_card(
     # Collapsed details, most useful first; cut to the caption budget.
     parts: list[str] = []
     if ev.why:
-        parts.append("<b>Почему</b>\n" + _bullets(ev.why, 3))
+        parts.append("<b>Why</b>\n" + _bullets(ev.why, 3))
     elif ev.reasoning:
         parts.append(html.escape(ev.reasoning))
     if ev.story:
-        parts.append("<b>История</b>\n" + html.escape(ev.story))
+        parts.append("<b>Story</b>\n" + html.escape(ev.story))
     if ev.checks:
-        parts.append("<b>Проверить</b>\n" + _bullets(ev.checks, 2))
+        parts.append("<b>Check</b>\n" + _bullets(ev.checks, 2))
     if ev.web_sources:
         links = " · ".join(
             f'<a href="{html.escape(u)}">{i}</a>' for i, u in enumerate(ev.web_sources[:3], 1)
         )
-        parts.append(f"<b>Источники цен</b>: {links}")
+        parts.append(f"<b>Price sources</b>: {links}")
     parts.append(
-        f"<i>Подделка: риск {_risk(ev.fake_risk)} · "
-        f"уверенность {ev.confidence}%</i>"
+        f"<i>Fake risk: {_risk(ev.fake_risk)} · "
+        f"confidence {ev.confidence}%</i>"
     )
     room = limit - len(caption) - len("\n\n<blockquote expandable></blockquote>")
     details = _fit(parts, room)
@@ -164,7 +163,7 @@ def format_card(
 
 
 def _short(value: Decimal) -> str:
-    return money(value).removesuffix(" €")
+    return money(value)
 
 
 def _fit(parts: list[str], room: int) -> str:
@@ -183,25 +182,15 @@ def _fit(parts: list[str], room: int) -> str:
 def button_label(payload: NotificationPayload) -> str:
     source = _SOURCE.get(payload.listing.marketplace, "eBay")
     is_bin = payload.listing.buying_option == BuyingOption.FIXED_PRICE
-    return f"{'Купить' if is_bin else 'Открыть'} на {source} →"
+    return f"{'Buy' if is_bin else 'Open'} on {source} →"
 
 
-def _plural(n: int, one: str, few: str, many: str) -> str:
-    if n % 10 == 1 and n % 100 != 11:
-        return f"{n} {one}"
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return f"{n} {few}"
-    return f"{n} {many}"
+def _plural(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
 
 
 def _bids(n: int) -> str:
-    if n % 10 == 1 and n % 100 != 11:
-        word = "ставка"
-    elif n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        word = "ставки"
-    else:
-        word = "ставок"
-    return f"{n} {word}"
+    return _plural(n, "bid", "bids")
 
 
 def _level(r: RarityLevel) -> str:

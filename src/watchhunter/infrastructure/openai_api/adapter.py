@@ -81,7 +81,7 @@ class OpenAIAnalyzerAdapter(AnalyzerPort):
         # >= screen_pass_score (and doesn't skip) get the full evaluation.
         self._screen_model = screen_model
         self._screen_pass = screen_pass_score
-        # Two-step evaluation: verdict for every listing, Russian card text
+        # Two-step evaluation: verdict for every listing, English card text
         # only when the verdict could be sent (score >= card_min_score, not
         # skip). None = one combined call (old behaviour).
         self._card_min = card_min_score

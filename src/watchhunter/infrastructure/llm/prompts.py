@@ -121,19 +121,19 @@ EVALUATION RULES
    "watch" is only for pieces a collector would actually want.
 7. Be aggressive with fake_risk on Casio AX-210, Seiko 0674, Pulsar — these
    are routinely faked or franken-assembled.
-8. Write for a Russian-speaking collector: every free-text field below
-   (condition, reasoning, display_name_ru, era_ru, story_ru, why_ru, checks_ru)
-   is in RUSSIAN; keep model numbers and brand names as they are.
+8. Write for an English-speaking collector: every free-text field below
+   (condition, reasoning, display_name, era, story, why, checks)
+   is in plain ENGLISH; keep model numbers and brand names as they are.
    Keep it short — it is shown on a phone under a photo.
-9. story_ru — 2-3 short sentences (max ~300 characters) on what this watch is and why collectors care:
+9. story — 2-3 short sentences (max ~300 characters) on what this watch is and why collectors care:
    the line/module and its place in watch history, notable firsts, famous
    wearers or film appearances (e.g. Seiko M354/0674 "James Bond", H558
    "Arnie"). ONLY facts you are sure of. If you are not sure about this exact
    model, describe the family or era instead and say so. Never invent a
    celebrity, film or production number.
-10. why_ru — 2-3 bullet reasons, each under 80 characters, concrete to THIS listing (price vs
+10. why — 2-3 bullet reasons, each under 80 characters, concrete to THIS listing (price vs
     value, completeness, condition, rarity), no generic filler.
-11. checks_ru — 1-2 concrete things (each under 80 characters) to verify before bidding (caseback number,
+11. checks — 1-2 concrete things (each under 80 characters) to verify before bidding (caseback number,
     module, functions, plating, seller photos missing).
 12. rarity — how hard THIS reference is to find, not how nice the listing is:
       "low"       ONLY current production / modern mass market (bought new
@@ -146,9 +146,9 @@ EVALUATION RULES
                   Casio CA-90 game-calculator, early Casiotron, H558 "Arnie")
       "very_high" grail: prototypes, limited editions, NOS-in-box of a rare
                   reference, turns up once a year or less
-    rarity_note_ru — max 70 chars, the concrete reason (years made, edition
-    size, JDM only, few survive working), e.g. "выпускались 1977–79, мало
-    рабочих экземпляров". Only facts you are sure of; else "оценка по эпохе".
+    rarity_note — max 70 chars, the concrete reason (years made, edition
+    size, JDM only, few survive working), e.g. "made 1977-79, few working
+    examples left". Only facts you are sure of; else "estimate from the era".
     Rarity raises the score only when the price doesn't already reflect it.
 13. value_low_eur / value_high_eur — realistic resale range; the
     estimated_market_value_eur is a point inside it.
@@ -169,15 +169,15 @@ EVALUATION RULES
      "condition": string,
      "fake_risk": "low" | "medium" | "high",
      "recommendation": "buy" | "watch" | "skip",
-     "reasoning": string,          (one sentence, Russian: the verdict)
-     "rarity_note_ru": string,
-     "display_name_ru": string,    (short, max 35 chars, e.g. "Seiko A159-4019 G")
-     "era_ru": string,             (e.g. "1977" or "конец 1970-х")
+     "reasoning": string,          (one sentence: the verdict)
+     "rarity_note": string,
+     "display_name": string,    (short, max 35 chars, e.g. "Seiko A159-4019 G")
+     "era": string,             (e.g. "1977" or "late 1970s")
      "value_low_eur": number,
      "value_high_eur": number,
-     "story_ru": string,
-     "why_ru": [string],
-     "checks_ru": [string]
+     "story": string,
+     "why": [string],
+     "checks": [string]
    }
 """
 
@@ -195,18 +195,18 @@ RESPONSE_SCHEMA: dict = {
         "current_price_eur": {"type": "number"},
         "potential_profit_eur": {"type": "number"},
         "rarity": {"type": "string", "enum": ["low", "medium", "high", "very_high"]},
-        "rarity_note_ru": {"type": "string"},
+        "rarity_note": {"type": "string"},
         "condition": {"type": "string"},
         "fake_risk": {"type": "string", "enum": ["low", "medium", "high"]},
         "recommendation": {"type": "string", "enum": ["buy", "watch", "skip"]},
         "reasoning": {"type": "string"},
-        "display_name_ru": {"type": "string"},
-        "era_ru": {"type": "string"},
+        "display_name": {"type": "string"},
+        "era": {"type": "string"},
         "value_low_eur": {"type": "number"},
         "value_high_eur": {"type": "number"},
-        "story_ru": {"type": "string"},
-        "why_ru": {"type": "array", "items": {"type": "string"}},
-        "checks_ru": {"type": "array", "items": {"type": "string"}},
+        "story": {"type": "string"},
+        "why": {"type": "array", "items": {"type": "string"}},
+        "checks": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
         "interesting",
@@ -222,14 +222,14 @@ RESPONSE_SCHEMA: dict = {
         "fake_risk",
         "recommendation",
         "reasoning",
-        "display_name_ru",
-        "era_ru",
-        "rarity_note_ru",
+        "display_name",
+        "era",
+        "rarity_note",
         "value_low_eur",
         "value_high_eur",
-        "story_ru",
-        "why_ru",
-        "checks_ru",
+        "story",
+        "why",
+        "checks",
     ],
 }
 
@@ -396,17 +396,17 @@ SCREEN_SCHEMA: dict = {
 
 # ─── Two-step evaluation ──────────────────────────────────────────────────
 # Step 1 (every listing): the verdict only, short.  Step 2 (finds only): the
-# Russian card text.  Most evaluated listings are rejected, so step 2's ~300
+# card text.  Most evaluated listings are rejected, so step 2's ~300
 # output tokens are only paid for the few that are sent.
 _CARD_FIELDS = (
-    "display_name_ru",
-    "era_ru",
-    "rarity_note_ru",
+    "display_name",
+    "era",
+    "rarity_note",
     "value_low_eur",
     "value_high_eur",
-    "story_ru",
-    "why_ru",
-    "checks_ru",
+    "story",
+    "why",
+    "checks",
 )
 
 VERDICT_SCHEMA: dict = {
@@ -427,12 +427,12 @@ CARD_SCHEMA: dict = {
 
 VERDICT_SUFFIX = (
     "\n\nSTEP 1 of 2 — VERDICT: return ONLY the verdict fields of the schema. "
-    "condition and reasoning: at most 15 words each, in Russian."
+    "condition and reasoning: at most 15 words each, in English."
 )
 
 CARD_SUFFIX = (
     "\n\nSTEP 2 of 2 — CARD: the verdict is already decided (given below). "
-    "Return ONLY the card fields of the schema, in Russian, consistent with it. "
+    "Return ONLY the card fields of the schema, in English, consistent with it. "
     "If the verdict carries web_check (sold prices found online) or sales (our "
     "own record of how this reference ended at auction), base value_low/high "
     "and rarity_note on that evidence rather than memory, and mention it. "
@@ -451,8 +451,8 @@ WEB_CHECK_INSTRUCTIONS = (
     "collector. Search the web for recently SOLD examples (eBay sold/completed, "
     "auction results, collector forums, price guides). Ignore asking prices of "
     "unsold listings when sold data exists. Report in EUR (convert roughly). "
-    "If you find nothing reliable, return zeros and say so. summary_ru: one "
-    "short Russian sentence. sources: up to 3 URLs you actually used."
+    "If you find nothing reliable, return zeros and say so. summary: one "
+    "short English sentence. sources: up to 3 URLs you actually used."
 )
 
 WEB_CHECK_SCHEMA: dict = {
@@ -462,8 +462,8 @@ WEB_CHECK_SCHEMA: dict = {
         "sold_low_eur": {"type": "number"},
         "sold_high_eur": {"type": "number"},
         "examples_found": {"type": "integer"},
-        "summary_ru": {"type": "string"},
+        "summary": {"type": "string"},
         "sources": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["sold_low_eur", "sold_high_eur", "examples_found", "summary_ru", "sources"],
+    "required": ["sold_low_eur", "sold_high_eur", "examples_found", "summary", "sources"],
 }

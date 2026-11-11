@@ -23,7 +23,7 @@ sale data, a better identification, or a better filter for what you like?
 | **ehl-finale-template** (swarm + lean browsing) | Model-driven Playwright browsing over CDP, re-login, paced requests | Sources without an API: Catawiki watch auctions, Chrono24 listings. One browser, slow pace. |
 | **lingobot-obsidian-sync** | Obsidian plugin that syncs bot data into notes | "Collection journal": every find you mark 💰 becomes a note with photos, price paid, story. |
 | **lora-exercise-predictor** | LoRA fine-tune + serving | Later, after ~500 labelled finds: a small tuned model for triage/rarity instead of prompts. |
-| **SaveForRecovery** | Telegram inline menus, i18n | Buttons under cards (👍 / 👎 / 💰 / напомнить), language switch. |
+| **SaveForRecovery** | Telegram inline menus, i18n | Buttons under cards (👍 / 👎 / 💰 / remind me), language switch. |
 
 ## Looked at, not recommended (now)
 
