@@ -61,7 +61,7 @@ WHAT YOU AGGRESSIVELY DOWNRANK (score ≤ 25, recommendation = "skip")
   ChocoMoon, Cluse, MVMT. Score ≤ 20.
 • CURRENT-PRODUCTION CASIO (still sold new for €20-60), e.g. F-91W, F-105,
   F-201, W-59, A158W/A158WA, A159W, A163W, A164W, A168W/A168WA, A171W,
-  A178W, A700W, LA670/LA680, B640, CA-53W, DBC-32/DBC-611 current models,
+  A178W, A700W, LA670/LA680, B640, CA-53W, DBC-32/DBC-32D/DBC-611 current models,
   AE-1200/AE-1300, AQ-230A, AQ-S810, MQ-24, DW-5600E/DW-5600BB, GA-2100,
   G-Shock / Baby-G current lines, Casio Collection "Retro/Vintage" re-editions
   (the word "vintage" in the title or on the dial does NOT make them vintage).
@@ -80,6 +80,14 @@ EVALUATION RULES
 
 1. Identify likely brand + model number (look for module/case-back numerals
    in photos, signature dial layouts, button arrangements).
+   Check the model against what the photos show before you commit to it:
+   case size and material, resin strap vs steel bracelet, button count, and
+   printed words (DATA BANK, TELEMEMO, MIT/world time, CALCULATOR). If they
+   don't fit the model you have in mind, it is a different model: pick the one
+   that fits (e.g. steel bracelet + MIT key + calculator = DBC-32D, current
+   production, not a CA-53W). A year from the 2010s/2020s on the display, or a
+   current catalogue suffix (-1, -1A, D, WA, EF, DF, B), points to a recent
+   watch: do not call it 1980s/vintage unless the case back or module proves it.
 2. If it's a smartwatch or modern fashion watch — INSTANT skip, score ≤ 25,
    recommendation = "skip". Do not waste reasoning.
 3. Estimate realistic resale (eBay sold-listings level, not optimistic dealer
