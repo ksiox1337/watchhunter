@@ -15,6 +15,7 @@ notified, so the running bot never sends them again.
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 import sys
 from decimal import Decimal
@@ -26,14 +27,18 @@ from watchhunter.container import build_container
 from watchhunter.domain.models import BuyingOption, Listing, Marketplace
 
 PRICE_BUCKETS = [(0, 20), (20, 40), (40, 70), (70, 200), (200, 100_000)]
-MAX_PRICE = Decimal("70")  # same cap as the live bot (MAX_TOTAL_EUR)
+MAX_PRICE = Decimal(os.environ.get("LABEL_MAX_PRICE", "70"))  # live bot cap by default
+# Optional focus: LABEL_KEYWORDS="casio vintage,casio databank" replaces the keywords
+# of every source, LABEL_BRAND=casio keeps only listings whose title names it.
+FOCUS = [k.strip() for k in os.environ.get("LABEL_KEYWORDS", "").split(",") if k.strip()]
+BRAND = os.environ.get("LABEL_BRAND", "").lower()
 
 
 async def gather_pool(c, s: Settings) -> list[Listing]:
     pool: dict[str, Listing] = {}
     queries = [
-        (BuyingOption.AUCTION, s.ebay_keywords, 3),
-        (BuyingOption.FIXED_PRICE, s.buy_now_keywords, 2),
+        (BuyingOption.AUCTION, FOCUS or s.ebay_keywords, 3),
+        (BuyingOption.FIXED_PRICE, FOCUS or s.buy_now_keywords, 2),
     ]
     for option, keywords, pages in queries:
         for market in s.ebay_marketplaces:
@@ -55,7 +60,7 @@ async def gather_kleinanzeigen(c, s: Settings, pages: int = 2) -> list[Listing]:
 
     ka = KleinanzeigenMarketplaceAdapter(http=c.http, rate_limiter=RateLimiter(rate_per_minute=8))
     q = MarketplaceQuery(
-        marketplace=Marketplace.KLEINANZEIGEN, category_id=None, keywords=s.kleinanzeigen_keywords,
+        marketplace=Marketplace.KLEINANZEIGEN, category_id=None, keywords=FOCUS or s.kleinanzeigen_keywords,
         ends_within_hours=24, only_with_bids=False, max_price_eur=MAX_PRICE,
         buying_option=BuyingOption.FIXED_PRICE, max_pages=pages,
     )
@@ -87,7 +92,7 @@ async def main(n: int) -> None:
         ebay = await gather_pool(c, s)
         ka = await gather_kleinanzeigen(c, s)
         print(f"eBay {len(ebay)}, Kleinanzeigen {len(ka)}")
-        pool = ebay + ka
+        pool = [x for x in ebay + ka if BRAND in x.title.lower()]
         # Never ask twice: skip anything already sent (rated sessions, finds).
         pool = [x for x in pool if not await c.repository.was_ever_notified(x.external_id)]
         chosen = pick(pool, n)
