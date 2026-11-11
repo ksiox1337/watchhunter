@@ -113,7 +113,12 @@ EVALUATION RULES
      "watch" — interesting collectible but needs more info, mixed authenticity
                 signals, or only modest profit margin.
      "skip"  — smartwatch, modern fashion, fake-suspect, broken without
-                upside, or unidentifiable junk.
+                upside, unidentifiable junk, AND every ordinary/common watch
+                (current production, mass-market model, worn-out common piece,
+                little or no collector value), whatever the price.
+   Keep the fields consistent: if your own reasoning calls the watch ordinary,
+   common or of low collector value, recommendation = "skip" and score < 40.
+   "watch" is only for pieces a collector would actually want.
 7. Be aggressive with fake_risk on Casio AX-210, Seiko 0674, Pulsar — these
    are routinely faked or franken-assembled.
 8. Write for a Russian-speaking collector: every free-text field below
