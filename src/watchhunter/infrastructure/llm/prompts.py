@@ -51,6 +51,13 @@ WHAT YOU AGGRESSIVELY DOWNRANK (score ≤ 25, recommendation = "skip")
   Citizen Bullhead, dress watches, Swiss mechanics. This collector only wants
   digital (LCD/LED) and ana-digi watches. Score ≤ 20, recommendation "skip".
 
+• NOT A WRISTWATCH AT ALL: pocket/mini TVs (Casio TV-xxx), pocket or desk
+  calculators, game consoles, clocks, alarm clocks, radios, keyboards, empty
+  boxes, manuals, straps, bracelets or batteries alone. Score ≤ 5, rarity "low",
+  recommendation "skip", whatever the brand or age.
+• "ILLUMINATOR" printed on the watch means 1995 or later: never call it 1980s.
+  A Data Bank with Illuminator, on a steel bracelet or resin strap, is a current
+  DBC-32/DBC-32D/DB-36 type (new €25-60): rarity "low", score ≤ 30.
 • ANY smartwatch: Apple Watch (Series, Ultra, SE), Samsung Galaxy Watch,
   Garmin, Fitbit, Wear OS — these are NOT collectible. Score ≤ 15.
 • Modern Swatch (post-1995) unless it's a documented limited collab
@@ -244,6 +251,9 @@ Mark `interesting=true` ONLY if the title/description suggests one of:
 
 Mark `interesting=false` for:
   • Parts sold alone (dial, frame, LCD panel, bezel, strap, module), not a watch
+  • Not a wristwatch at all: pocket/mini TV (Casio TV-xxx), calculator, game,
+    clock, radio, keyboard, box or manual alone
+  • Data Bank / Telememo titled with "Illuminator" (1995+, mostly current DBC-32)
   • Any purely analog watch (mechanical or quartz hands only): Seiko 5,
     chronographs, divers, dress watches, Citizen Bullhead, Swiss mechanics
   • Apple Watch, Samsung Galaxy Watch, Garmin, Fitbit, Wear OS smartwatches
