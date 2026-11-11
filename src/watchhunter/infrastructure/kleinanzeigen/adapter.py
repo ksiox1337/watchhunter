@@ -246,7 +246,7 @@ class KleinanzeigenMarketplaceAdapter(MarketplacePort):
                     or img.get("data-imgsrc")
                 )
                 if src and not str(src).startswith("data:"):
-                    image_urls = (str(src),)
+                    image_urls = (_large(str(src)),)
 
             # Description preview — Astro uses <p class="text-bodyRegular">.
             desc_el = card.select_one(
@@ -356,8 +356,7 @@ class KleinanzeigenMarketplaceAdapter(MarketplacePort):
                 s = str(src)
                 if s.startswith("data:"):
                     continue
-                # Promote thumbnail size to large where the URL pattern allows
-                s = re.sub(r"\$_\d+(?=\.(jpg|jpeg|png|webp))", "$_72", s, flags=re.I)
+                s = _large(s)
                 if s not in urls:
                     urls.append(s)
         return tuple(urls[:max_images])
@@ -365,6 +364,12 @@ class KleinanzeigenMarketplaceAdapter(MarketplacePort):
 
 # ─── price helpers ───────────────────────────────────────────────────────
 _PRICE_RE = re.compile(r"([\d.,]+)\s*€?", re.IGNORECASE)
+
+
+def _large(url: str) -> str:
+    """Full-size photo URL: search results carry a tiny `rule=$_2` thumbnail."""
+    url = re.sub(r"rule=\$_\d+\.[A-Za-z]+", "rule=$_59.AUTO", url)
+    return re.sub(r"\$_\d+(?=\.(jpg|jpeg|png|webp))", "$_59", url, flags=re.I)
 
 
 def _parse_kleinanzeigen_price(text: str) -> Decimal | None:
