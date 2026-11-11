@@ -1,187 +1,174 @@
 # WatchHunter
 
-Automated scanner that hunts for **undervalued watches** on eBay auctions ending within the next 24 hours, triages titles in batches with a cheap OpenAI model, evaluates the survivors with a multimodal OpenAI model (watch dealer/auction expert), persists promising hits in **SQLite**, and pushes them to **Telegram** every hour.
+A personal deal hunter for collectible **vintage digital watches** (LCD, LED,
+calculator, ana-digi). It watches eBay and Kleinanzeigen, looks at the photos
+with a vision model, and sends the few listings worth a look to Telegram. Every
+👍 / 👎 you tap under a card trains a small taste model, so the bot gets closer to
+what *you* collect.
 
-```
-eBay (API or HTML)  ─┐
-                     ├─►  ListingFilter ─► batched triage ─► OpenAI multimodal eval  ─►  SQLite  ─►  Telegram
-Scheduler (APS)   ──┘                                                              (hourly)
-```
+It runs 24/7 on a Raspberry Pi for about **$0.05–0.20 a day** in model calls.
 
-## Features
-
-- **Two eBay adapters, hot-swappable**: official Browse API (when you have credentials) and an HTML fallback (no keys required for development).
-- Searches `Watches` (US: 31387) and `Armbanduhren` (DE: 260324) — plus any other marketplace/category you configure.
-- Filters auctions to **bidded + ending within 24h** before LLM cost is incurred.
-- OpenAI returns **strict structured JSON** (json_schema) validated through Pydantic into a `WatchEvaluation`.
-- Discards anything with `score < 60` or `recommendation == "skip"`.
-- Telegram notifications include photo, price, estimated value, profit, end time, link, and the model's reasoning.
-- Clean Architecture: `domain` → `application` → `infrastructure` → `presentation`. Ports & adapters make it trivial to add Chrono24, OpenAI, Discord, or Postgres later.
-- Async-first (`asyncio` / `aiohttp` / `aiosqlite`), with retry (`tenacity`) and rate-limiting (`aiolimiter`) on every external call.
-
----
-
-## Project layout
-
-```
-src/watchhunter/
-├── config/             Settings (Pydantic) + structlog setup
-├── domain/             Listing, WatchEvaluation, exceptions  (pure)
-├── application/
-│   ├── ports/          MarketplacePort, AnalyzerPort, NotifierPort, ListingRepository
-│   ├── services/       ListingFilter, DealEvaluator
-│   └── use_cases/      ScanWatchesUseCase, NotifyPromisingUseCase
-├── infrastructure/
-│   ├── http/           shared aiohttp session
-│   ├── ratelimit/      aiolimiter wrapper
-│   ├── ebay/           Browse API + HTML fallback adapters
-│   ├── llm/            prompts + strict JSON schemas
-│   ├── openai_api/     OpenAI client (budget-aware) + analyzer adapter
-│   ├── telegram/       Bot API client + adapter
-│   └── persistence/    SQLAlchemy 2.0 async engine, ORM, repository
-├── scheduler/          APScheduler (scan every 15m, notify every 60m)
-├── container.py        DI composition root
-└── main.py             Entry point (asyncio.run + signal handling)
+```mermaid
+flowchart LR
+    E[eBay Browse API<br/>auctions + Buy It Now] --> F
+    K[Kleinanzeigen<br/>paced scraper] --> F
+    F[Rules<br/>price cap, dedup,<br/>freshness] --> T[Jev triage<br/>title only, batched]
+    T --> V[OpenAI vision verdict<br/>model, era, rarity, value]
+    V --> G{Gate<br/>score, recommendation,<br/>taste model}
+    G -->|pass| C[Card text] --> TG[Telegram card<br/>👍 💸 👎 💰]
+    TG -->|your taps| L[Taste model<br/>retrains every 5 h]
+    L --> G
+    V --> S[(SQLite<br/>listings, evaluations,<br/>sales, feedback)]
 ```
 
----
+## What makes it different
 
-## Database schema
+| | Typical listing monitors | WatchHunter |
+|---|---|---|
+| New-listing alerts | yes | yes |
+| Reads the photos | no | yes: model number, case, bracelet, dial text, year on the display |
+| Rarity and value | no | rarity tier + value range, calibrated against recorded hammer prices |
+| Learns your taste | no | logistic regression on your Telegram reactions, auto-retrained |
+| Cost per useful find | n/a | a few cents |
 
-Two tables:
+## Pipeline
 
-- **`listings`** — every unique auction (dedup key: `ebay_item_id`)
-- **`evaluations`** — one row per model evaluation, FK to `listings`
+1. **Fetch.** eBay Browse API (OR-grouped keywords, auctions + Buy It Now) and
+   Kleinanzeigen search pages with a rate limiter and a block cooldown.
+   Kleinanzeigen photos are fetched in full size from the listing page.
+2. **Cheap rules.** Price incl. shipping ≤ `MAX_TOTAL_EUR`, already seen,
+   already rejected, ended, stale Buy It Now listings.
+3. **Triage (text).** Jev (TypeSafe) scores titles in batches
+   against the buying criteria; OpenAI nano is the fallback.
+4. **Verdict (vision).** `gpt-5-mini` with a strict JSON schema: brand, model,
+   era, rarity, value range, fake risk, recommendation. The prompt checks the
+   claimed model against what the photos show (case material, bracelet,
+   printed words), knows the current-production Casio line-up, and skips
+   anything that is not a wristwatch.
+5. **Gate.** `MIN_SCORE`, recommendation, optional `MIN_RARITY` /
+   `MIN_PROFIT_EUR`, and the taste model threshold (with a small exploration
+   rate so it keeps learning).
+6. **Card.** Only for finds: a second short call writes the story, why it was
+   picked and what to check. Optional web search for sold prices.
+7. **Telegram.** Big photo, five-line caption, details in a collapsed quote,
+   buttons: 👍 interesting · 💸 right watch, wrong price · 👎 not for me ·
+   💰 would buy. `/stats` shows the last 24 h.
+8. **Learning loop.**
+   - Every evaluated auction is followed to its end, and the final price
+     lands in a sales table that calibrates the value estimates.
+   - Perceptual image hashes flag photos reused across listings.
+   - Your reactions retrain the taste model every 5 hours.
 
-See `src/watchhunter/infrastructure/persistence/models.py`.
+## Numbers (from my own runs, November 2026)
 
----
+- **Taste model:** 1,277 rated listings, 116 positive.
+  - Cross-validated AUC: logistic regression 0.944, random forest 0.924.
+  - At the live threshold it sends about 1 in 5 listings and keeps about 90% of
+    the ones I liked.
+- **Rarity benchmark** (`bench/rarity_bench.py`, 95 live listings, 17
+  references): 84% tier accuracy, 27 of 29 rare pieces found. See
+  [bench/RARITY.md](bench/RARITY.md).
+- **Cost:**
+  - Verdict about $0.0005 per listing, card text about $0.0013 per find.
+  - Normal operation is $0.05–0.20 a day; a hard daily cap (`MAX_DAILY_COST_USD`)
+    stops model calls.
 
 ## Setup
 
-### Prerequisites
+Python 3.12.
 
-- **Python 3.12+**
-- An **OpenAI API key** — https://platform.openai.com/api-keys
-- A **Telegram bot** — create one via `@BotFather`, then send a message to your bot and grab the chat ID
-- *(Optional)* **eBay developer account** — https://developer.ebay.com — for production-grade access
-
-### 1. Create venv and install dependencies
-
-```bash
-cd watchhunter
+```sh
 python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
-# dev extras (tests, ruff, mypy):
-pip install -r requirements-dev.txt
-pip install -e .
+.venv/bin/pip install -r requirements.txt -r requirements-dev.txt -e .
+cp .env.example .env                     # then fill in the keys
+.venv/bin/python -m watchhunter check    # tests eBay, OpenAI, Jev and Telegram keys
+.venv/bin/python -m watchhunter          # run
 ```
 
-### 2. Configure environment
+Keys you need (all in `.env`, never committed):
 
-```bash
-cp .env.example .env
-# then edit .env and set at minimum:
-#   OPENAI_API_KEY
-#   TELEGRAM_BOT_TOKEN
-#   TELEGRAM_CHAT_ID
-# Leave EBAY_USE_API=false until you have eBay credentials — the HTML adapter will be used.
+| Key | Where |
+|---|---|
+| `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | eBay developer program, production keyset (Browse API) |
+| `OPENAI_API_KEY` | OpenAI |
+| `TYPESAFE_API_KEY` | Jev triage (optional; `TRIAGE_PROVIDER=openai` works without it) |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | @BotFather and your chat id |
+
+Useful settings:
+- **Search:** `EBAY_KEYWORDS` and `BUY_NOW_KEYWORDS` (use `a|b` inside one
+  keyword for an OR group), `KLEINANZEIGEN_KEYWORDS`.
+- **Gate:** `MAX_TOTAL_EUR`, `MIN_SCORE`, `MIN_RARITY`, `TASTE_THRESHOLD`,
+  `TASTE_EXPLORE_RATE`.
+
+Only one instance runs at a time (file lock in `data/`).
+
+### Run on a Raspberry Pi
+
+A systemd user service keeps it alive and restarts it after a crash or reboot:
+
+```ini
+# ~/.config/systemd/user/watchhunter.service
+[Service]
+WorkingDirectory=%h/watchhunter
+ExecStart=%h/watchhunter/.venv/bin/python -m watchhunter
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target
 ```
 
-### 3. Run
-
-```bash
-python -m watchhunter
+```sh
+loginctl enable-linger $USER
+systemctl --user enable --now watchhunter
 ```
 
-You should see structured JSON logs like:
+## Training your own taste
 
-```json
-{"event": "app.starting", "level": "info", "version": "0.1.0", ...}
-{"event": "container.marketplace", "impl": "ebay.html_fallback", ...}
-{"event": "database.initialized", ...}
-{"event": "scheduler.started", "scan_interval_min": 15, "notify_interval_min": 60}
-{"event": "scan.complete", "fetched": 47, "analyzed": 12, "promising": 3, ...}
+```sh
+# 200 varied listings, rate them in Telegram
+.venv/bin/python scripts/label_session.py 200
+# focus on one brand, any price
+LABEL_BRAND=casio LABEL_KEYWORDS="casio uhr,casio" LABEL_MAX_PRICE=1000 \
+  .venv/bin/python scripts/label_session.py 200
+# what the live rules would send: measures precision
+.venv/bin/python scripts/good_session.py 100
+# replay your ratings against the rules
+.venv/bin/python bench/feedback_bench.py
 ```
 
-For local development with pretty logs, set `LOG_JSON=false`.
+## Layout
 
-### 4. Run tests
-
-```bash
-pytest
+```
+src/watchhunter/
+├── domain/            Listing, WatchEvaluation, rarity, reference keys
+├── application/       ports, ListingFilter, DealEvaluator, scan + notify use cases
+├── infrastructure/
+│   ├── ebay/          Browse API adapter (+ legacy HTML adapter, opt-in only)
+│   ├── kleinanzeigen/ paced search + gallery scraper
+│   ├── jev/           batched title triage
+│   ├── openai_api/    budget-aware client, verdict / card / web check
+│   ├── llm/           prompts and strict JSON schemas
+│   ├── images/        perceptual hash index
+│   ├── telegram/      cards, buttons, /stats, feedback polling
+│   └── persistence/   SQLAlchemy async + SQLite
+├── sales/             auction follow-up and hammer-price stats
+├── learning/          taste model (TF-IDF + verdict features, logreg / random forest)
+├── scheduler/         APScheduler jobs
+└── container.py       wiring
+bench/                 rarity and feedback benchmarks
+scripts/               labeling sessions, triage check, sample card
+docs/                  ROADMAP.md, TOOLS.md
 ```
 
----
+## Notes
 
-## Switching from HTML to API
+- **Kleinanzeigen.** Its terms do not allow automated access. The adapter is
+  slow on purpose (a few requests a minute, it pauses on 403/429) and is meant
+  for personal use only.
+- **eBay.** Use the official Browse API. The HTML adapter is kept only as an
+  explicit opt-in: scraping eBay got my IP blocked.
+- **Taste model.** It is personal. It learns from one collector's taps and is
+  not a market model.
 
-When you obtain eBay credentials:
-
-```bash
-# in .env
-EBAY_USE_API=true
-EBAY_CLIENT_ID=your_id_here
-EBAY_CLIENT_SECRET=your_secret_here
-```
-
-Restart the app — `container.py` picks the API adapter automatically. No code changes needed.
-
----
-
-## Extending to other marketplaces
-
-1. Implement `MarketplacePort` in `infrastructure/<marketplace>/adapter.py`.
-2. Add a factory in `container._build_marketplace`.
-3. Done. The use cases don't change.
-
-The same applies to `AnalyzerPort` (swap OpenAI for another provider) and `NotifierPort` (swap Telegram for Slack/Discord/email).
-
----
-
-## Configuration reference
-
-All settings live in `.env` and are validated at startup via Pydantic. See `.env.example` for the full list with comments. Key knobs:
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `SCAN_INTERVAL_MINUTES` | 15 | How often to scan eBay |
-| `NOTIFY_INTERVAL_MINUTES` | 60 | How often to push to Telegram |
-| `MIN_SCORE` | 60 | Discard evaluations below this score |
-| `AUCTION_ENDS_WITHIN_HOURS` | 24 | Auction time window |
-| `REANALYSIS_TTL_HOURS` | 6 | Don't re-evaluate for the same listing within this window |
-| `OPENAI_MODEL` / `OPENAI_TRIAGE_MODEL` | gpt-5-mini / gpt-5-nano | Eval / triage models |
-| `TRIAGE_BATCH_SIZE` | 25 | Titles judged per triage call |
-| `MAX_DAILY_COST_USD` | 0 | Daily spend cap (0 = none) |
-| `EBAY_MARKETPLACES` | `EBAY_US,EBAY_DE` | Comma-separated |
-| `EBAY_CATEGORY_IDS` | `31387,260324` | Wristwatches / Armbanduhren |
-
----
-
-## Error handling strategy
-
-- All adapter exceptions inherit from `DomainError` (`MarketplaceError`, `AnalyzerError`, `NotifierError`).
-- Scheduler jobs are wrapped in `_safe_*` methods — a single failed run never crashes the loop.
-- `tenacity` retries every external HTTP call with exponential backoff (3 attempts, 1–20 s).
-- The use cases collect per-listing exceptions into a stats dict rather than aborting the whole scan.
-
----
-
-## Operational notes
-
-- **State is local** — the SQLite file lives at `./data/watchhunter.db`. Back it up if you care about history.
-- **Cost control**: `ListingFilter` cuts the candidate list before any model call; DB dedup and an in-memory "triaged out" memory (for `REANALYSIS_TTL_HOURS`) skip listings already judged; triage sends `TRIAGE_BATCH_SIZE` titles per call so the instruction prompt is paid once per batch; evaluation passes public image URLs at `detail=low` (no download, ~85 tokens/image) with `reasoning_effort=minimal`; `MAX_DAILY_COST_USD` is a hard cap.
-- **Telegram caption limit** is 1024 chars — the adapter truncates safely.
-- **HTML adapter caveat**: best-effort, brittle, against eBay ToS for production. Use the API adapter once you have keys.
-
----
-
-## Roadmap (future work)
-
-- Replace static FX table with a live FX adapter.
-- Add a `cleanup` job that deletes expired auctions older than N days.
-- Add Postgres support (just swap `DATABASE_URL`).
-- Inline buttons in Telegram (mark as "interested" / "bid placed").
-- Live FX + per-marketplace shipping cost adjustment in the prompt.
+Tests: `make test`.
