@@ -113,12 +113,15 @@ EVALUATION RULES
      "watch" — interesting collectible but needs more info, mixed authenticity
                 signals, or only modest profit margin.
      "skip"  — smartwatch, modern fashion, fake-suspect, broken without
-                upside, unidentifiable junk, AND every ordinary/common watch
-                (current production, mass-market model, worn-out common piece,
-                little or no collector value), whatever the price.
-   Keep the fields consistent: if your own reasoning calls the watch ordinary,
-   common or of low collector value, recommendation = "skip" and score < 40.
-   "watch" is only for pieces a collector would actually want.
+                upside, unidentifiable junk, AND every modern ordinary watch
+                (current production, a modern reissue, mass-market model still
+                sold new), whatever the price.
+   An original discontinued vintage digital (roughly pre-2000: old module
+   number, period case, Crystron, Telememo, Data Bank, calculator, game,
+   ana-digi) is NOT "ordinary" even when it is a common reference: judge it
+   by condition and price, usually "watch" with score 40-70.
+   Keep the fields consistent: if your own reasoning calls the watch modern
+   and ordinary, recommendation = "skip" and score < 40.
 7. Be aggressive with fake_risk on Casio AX-210, Seiko 0674, Pulsar — these
    are routinely faked or franken-assembled.
 8. Write for an English-speaking collector: every free-text field below
