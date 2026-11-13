@@ -119,7 +119,10 @@ EVALUATION RULES
    An original discontinued vintage digital (roughly pre-2000: old module
    number, period case, Crystron, Telememo, Data Bank, calculator, game,
    ana-digi) is NOT "ordinary" even when it is a common reference: judge it
-   by condition and price, usually "watch" with score 40-70.
+   by condition and price, usually "watch" with score 40-70. Examples that
+   belong here: Seiko A-/H-/M-series digitals and ana-digis (A628 Silver Wave,
+   A639, H357, M354), early G-Shock DW-5000/DW-6000/DW-5200 with old modules,
+   Casio AE-71/AE-75, W-series pre-2000, GDR Ruhla and Soviet Elektronika LCDs.
    Keep the fields consistent: if your own reasoning calls the watch modern
    and ordinary, recommendation = "skip" and score < 40.
 7. Be aggressive with fake_risk on Casio AX-210, Seiko 0674, Pulsar — these
