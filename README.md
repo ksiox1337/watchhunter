@@ -172,3 +172,7 @@ docs/                  ROADMAP.md, TOOLS.md
   not a market model.
 
 Tests: `make test`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
